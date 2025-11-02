@@ -13,6 +13,8 @@ namespace UrestComplaintWebApi.Models
         public int PropertyId { get; set; }
         public DateTime Created_On { get; set; }
         public DateTime Updated_On { get; set; }
-        public int Employee_Id { get; set; }
+        public int Property_Id { get; set; }
+        public bool IsRequisition { get; set; }
+        public bool IsHandover { get; set; }
     }
 }
