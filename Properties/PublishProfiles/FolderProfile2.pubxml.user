@@ -4,8 +4,8 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
 -->
 <Project>
   <PropertyGroup>
-    <_PublishTargetUrl>D:\SNS\Shreeji\Ufirm\Ufirm\UrestComplaintWebApi\bin\app.publish\</_PublishTargetUrl>
-    <History>True|2023-04-27T04:21:49.7598402Z;True|2023-04-24T09:13:36.7308642+05:30;True|2023-04-24T09:05:47.1836933+05:30;</History>
+    <_PublishTargetUrl>C:\projects\UFirm\UrestComplaintWebApi\bin\app.publish\</_PublishTargetUrl>
+    <History>True|2024-01-05T09:24:09.5570670Z;True|2024-01-05T13:18:17.8292273+05:30;True|2023-12-26T16:11:33.9011250+05:30;True|2023-04-27T09:51:49.7598402+05:30;True|2023-04-24T09:13:36.7308642+05:30;True|2023-04-24T09:05:47.1836933+05:30;</History>
     <LastFailureDetails />
   </PropertyGroup>
   <ItemGroup>
@@ -87,6 +87,9 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
     <File Include="bin/Microsoft.AspNetCore.Http.Features.dll">
       <publishTime>04/16/2022 03:48:18</publishTime>
     </File>
+    <File Include="bin/Microsoft.Bcl.AsyncInterfaces.dll">
+      <publishTime>10/23/2021 05:12:08</publishTime>
+    </File>
     <File Include="bin/Microsoft.CodeDom.Providers.DotNetCompilerPlatform.dll">
       <publishTime>09/05/2018 16:10:50</publishTime>
     </File>
@@ -97,7 +100,7 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
       <publishTime>07/25/2012 11:48:56</publishTime>
     </File>
     <File Include="bin/Newtonsoft.Json.dll">
-      <publishTime>11/09/2019 06:26:44</publishTime>
+      <publishTime>11/24/2022 07:40:26</publishTime>
     </File>
     <File Include="bin/roslyn/csc.exe">
       <publishTime>08/08/2018 05:38:48</publishTime>
@@ -268,10 +271,19 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
       <publishTime>05/15/2018 18:59:44</publishTime>
     </File>
     <File Include="bin/System.Runtime.CompilerServices.Unsafe.dll">
-      <publishTime>10/20/2020 00:16:30</publishTime>
+      <publishTime>10/23/2021 05:10:18</publishTime>
+    </File>
+    <File Include="bin/System.Text.Encodings.Web.dll">
+      <publishTime>10/23/2021 05:11:14</publishTime>
+    </File>
+    <File Include="bin/System.Text.Json.dll">
+      <publishTime>10/23/2022 23:26:24</publishTime>
     </File>
     <File Include="bin/System.Threading.Tasks.Extensions.dll">
       <publishTime>02/19/2020 15:35:18</publishTime>
+    </File>
+    <File Include="bin/System.ValueTuple.dll">
+      <publishTime>05/15/2018 18:59:52</publishTime>
     </File>
     <File Include="bin/System.Web.Cors.dll">
       <publishTime>05/28/2022 05:11:44</publishTime>
@@ -307,10 +319,10 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
       <publishTime>11/28/2018 13:04:24</publishTime>
     </File>
     <File Include="bin/UrestComplaintWebApi.dll">
-      <publishTime>04/27/2023 09:47:54</publishTime>
+      <publishTime>01/05/2024 14:52:50</publishTime>
     </File>
     <File Include="bin/UrestComplaintWebApi.pdb">
-      <publishTime>04/27/2023 09:47:54</publishTime>
+      <publishTime>01/05/2024 14:52:50</publishTime>
     </File>
     <File Include="bin/WebActivatorEx.dll">
       <publishTime>02/08/2013 22:12:28</publishTime>
@@ -412,7 +424,7 @@ https://go.microsoft.com/fwlink/?LinkID=208121.
       <publishTime>07/28/2022 10:52:24</publishTime>
     </File>
     <File Include="Web.config">
-      <publishTime>04/27/2023 09:51:29</publishTime>
+      <publishTime>12/26/2023 16:11:33</publishTime>
     </File>
   </ItemGroup>
 </Project>

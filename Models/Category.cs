@@ -1,11 +1,16 @@
 ﻿using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Web;
 
 namespace UrestComplaintWebApi.Models
 {
+    public class ResetPasswordRequest
+    {
+        public string MobileNumber { get; set; }
+    }
     public class User
     {
         public int UserIdId { get; set; }
@@ -98,11 +103,95 @@ namespace UrestComplaintWebApi.Models
         public string Name { get; set; }
         public string Description { get; set; }
         public string QRCode { get; set; }
-        public string Flag { get; set; }
         public string AssetType { get; set; }
         public string Manufacturer { get; set; }
         public string AssetModel { get; set; }
-        public bool IsMovable { get; set; }
+        public int AssetValue { get; set; }
+        public bool IsMoveable { get; set; }
+        public string AssetImage { get; set; }
+        public string AMCdoc { get; set; }
+
+        public string LastServiceDate { get; set; }
+        public string NextServiceDate { get; set; }
+        public bool IsRentable { get; set; }
+        public string Flag { get; set; } // For differentiating between insert, update, delete
+        public string AssetStatus { get; set; } 
+         public int PropertyId { get; set; }
+        public bool Status { get; set; }
+        public string Location { get; set; }
+        public string Category { get; set; }
+    }
+
+    public class AssetTransaction
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public DateTime? ReturnDate { get; set; }
+        public DateTime? RentedOutDate { get; set; }
+        public string Purpose { get; set; }
+        public DateTime? CheckOutDateTime { get; set; }
+        public DateTime? TentativeReturnDate { get; set; }
+        public string ApprovedBy { get; set; }
+        public string ReturnedBy { get; set; }
+
+    }
+
+    public class CheckOutModel
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; }
+        public string AssigneeName { get; set; }
+        public string Purpose { get; set; }
+        public DateTime? CheckOutDateTime { get; set; }
+        public string OutFrom { get; set; }
+        public string SentTo { get; set; }
+        public DateTime? TentativeReturnDate { get; set; }
+        public string ImageOut { get; set; }
+        public List<SpareFieldModel> SpareFields { get; set; }
+        public string ApprovedBy { get; set; }
+    }
+
+    public class SpareFieldModel
+    {
+        public int Id { get; set; }
+        public string SpareName { get; set; }
+        public DateTime TentativeReturnDate { get; set; }
+
+        public DateTime ? ReturnDateTime { get; set; }
+    }
+
+    public class CheckInModel
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; }
+        public string ReturnedBy { get; set; }
+        public DateTime? ReturnDateTime { get; set; }
+        public string ImageIn { get; set; }
+        public List<SpareFieldModel> SpareFields { get; set; }
+    }
+
+    public class RentalAsset
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; }
+        public string AssigneeName { get; set; }
+        public DateTime? RentOutDateTime { get; set; }
+        public DateTime? TentativeReturnDate { get; set; }
+        public string RentedTo { get; set; }
+        public string OutFrom { get; set; }
+        public int RentalCharges { get; set; }
+        public string ImageOut { get; set; }
+        public string ApprovedBy { get; set; }
+    }
+
+    public class ReturnRentalAssetModel
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; }
+        public string ReturnedBy { get; set; }
+        public DateTime? ReturnDateTime { get; set; }
+        public string ReturnedFrom { get; set; }
+        public string ImageIn { get; set; } // Base64 string representation of the image
     }
 
     public class Category
@@ -196,6 +285,7 @@ namespace UrestComplaintWebApi.Models
         public string QuestionName { get; set; }
         public string Action { get; set; }
         public string Remarks { get; set; }
+        public string Status { get; set; }
     }
 
     public class TaskWiseQuestions
@@ -237,6 +327,7 @@ namespace UrestComplaintWebApi.Models
         public string SubCategoryName { get; set; }
         public int EntryType { get; set; }
         public string AssignedTo { get; set; }
+        public int PropertyId { get; set; }
         public int AssignedToId { get; set; }
         public string QRCode { get; set; }
         public string QuestionName { get; set; }
@@ -244,6 +335,10 @@ namespace UrestComplaintWebApi.Models
         public string UpdatedOn { get; set; }
         public string AssetName { get; set; }
         public int AssetId { get; set; }
+        public int Duration { get; set; }
+        public string Location { get; set; }
+        public int TaskPriorityId { get; set; }
+        public string TaskPriority { get; set; }
     }
 
     public class TaskMaster
@@ -266,6 +361,8 @@ namespace UrestComplaintWebApi.Models
         public string Location { get; set; }
         public int AssetsID { get; set; }
         public string QRCode { get; set; }
+
+        public string Type { get; set; }
     }
 
     public class Product
@@ -325,6 +422,300 @@ namespace UrestComplaintWebApi.Models
     {
         public string CountryNameLong { get; set; }
         public string CountryNameShort { get; set; }
+    }
+
+    public class EmployeeDesignationCountModel
+    {
+        public string Designation { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class EmployeeAttendanceSummaryCountModel
+    {
+        public string Leave { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class EmployeeWiseTaskSummaryModel
+    {
+        public int Id { get; set; }
+        public string EmployeeName { get; set; }
+        public string Designation { get; set; }
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public int OverdueTasks { get; set; }
+        public decimal CompletionPercentage { get; set; }
+        public string Attendance { get; set; }
+        public DateTime CreatedOn { get; set; }
+        public int AssignTo { get; set; }
+        public int ActionItem { get; set; }
+    }
+
+    public class EmployeeWiseTaskSummaryChartModel
+    {
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public double CompletionPercentage { get; set; }
+        public DateTime CreatedOn { get; set; }
+        public int ActionItem { get; set; }
+    }
+
+    public class EmployeeAttendanceSummaryModel
+    {
+        public int Id { get; set; }
+        public int FacilityMemberId { get; set; }
+        public string FacilityMemberName { get; set; }
+        public DateTime Date { get; set; }
+        public string Leave { get; set; }
+        public DateTime CreatedOn { get; set; }
+    }
+
+    public class CategoryWiseTasksModel
+    {
+        public string Category { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class CategoryWiseTasksSummaryModel
+    {
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public int OverdueTasks { get; set; }
+        public int ActionableTasks { get; set; }
+    }
+
+    public class TaskWiseSummaryModel
+    {
+        public int Id { get; set; }
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; }
+        public string TaskName { get; set; }
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public int OverdueTasks { get; set; }
+        public decimal CompletionPercentage { get; set; }
+        public int ActionItem { get; set; }
+    }
+
+    public class TaskWiseSummaryChartModel
+    {
+        public string CategoryName { get; set; }
+        public int TotalTasks { get; set; }
+        public int CompletedTasks { get; set; }
+        public int OverdueTasks { get; set; }
+        public double CompletionPercentage { get; set; }
+        public int ActionItem { get; set; }
+    }
+
+    public class TaskWiseFmStatusModel 
+    {
+        public int Id { get; set; }
+        public int TaskId { get; set; }
+        public int QuestId { get; set; }
+        public DateTime Date { get; set; }
+        public string Remarks { get; set; }
+    }
+
+    public class PropertyModel
+    {
+        public int PropertyId { get; set; }
+        public int PropertyTypeId { get; set; }
+        public string Name { get; set; }
+        public string AddressLine1 { get; set; }
+        public string AddressLine12 { get; set; }
+        public int CityId { get; set; }
+        public string ContactNumber { get; set; }
+        public int? LanguageId { get; set; }
+        public decimal? ProjectArea { get; set; } = null;
+        public int? TotalTowers { get; set; }
+        public int? Totalunits { get; set; }
+        public int? TotalCommercialUnits { get; set; }
+        public string Landmark { get; set; }
+        public string Pincode { get; set; }
+        public bool IsActive { get; set; }
+        public int CreatedBy { get; set; }
+        public DateTime CreatedOn { get; set; }
+        public DateTime? UpdateOn { get; set; }
+        public int? updatedby { get; set; }
+        public bool? IsDeleted { get; set; }
+    }
+
+    public class FacilityMemberModel
+    {
+        public int FacilityMemberId { get; set; }
+        public int PropertyId { get; set; }
+        public string Name { get; set; }
+        public string Gender { get; set; }
+        public string MobileNumber { get; set; }
+        public string Address { get; set; }
+        public int FacilityMasterId { get; set; }
+        public string AccessCode { get; set; }
+    }
+
+    public class TaskPriorityModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+    public class AoaLoginResp
+    {
+        public string Name { get; set; }
+        public string MobileNumber { get; set; }
+        public int PropertyId { get; set; }
+    }
+
+    public class TaskWiseDailyStatusFinalDashModel
+    {
+        public int TaskID { get; set; }
+        public string TaskName { get; set; }
+        public int QuestID { get; set; }
+        public string Remarks { get; set; }
+        public DateTime Updatedon { get; set; }
+        public string TaskStatus { get; set; }
+        public string TaskPriority { get; set; }
+        public int TaskPriorityId { get; set; }
+        public int CategoryId { get; set; }
+        public int SubCategoryId { get; set; }
+        public int AssignTo { get; set; }
+        public string Occurence { get; set; }
+        public string AssignToName { get; set; }
+    }
+
+    public class TaskStatusSummaryDtoAllSubCat
+    {
+        public int PropertyId { get; set; }
+        public int CategoryId { get; set; }
+        public int SubCategoryId { get; set; }
+        public string TaskStatus { get; set; }
+        public int Count { get; set; }
+    }
+
+
+    public class TaskWiseDailyStatusFinalCountDashModel
+    {
+        public string TaskStatus { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class PriorityCountDashModel
+    {
+        public string TaskPriority { get; set; }
+        public int Count { get; set; }
+    }
+
+    public class TaskNotification
+    {
+        public int TaskId { get; set; }            // Assuming TaskId is an integer
+        public int QuestionId { get; set; }        // Nullable, assuming QuestionId might be null
+        public string TaskName { get; set; }        // TaskName is a string
+        public DateTime SUPdateTime { get; set; }   // Assuming SUPdateTime is a DateTime field
+        public string SupRemark { get; set; }       // SupRemark is a string
+        public string SupName { get; set; }         // Name of the supervisor from FacilityMember
+        public int PropertyId { get; set; }
+
+        public int FmId { get; set; }
+        public string FmRemark { get; set; }
+        public DateTime FMdateTime { get; set; }
+
+        public string CurrentStatus { get; set; }
+        public int SupId { get; set; }
+
+        public string Remark { get; set; }
+        public DateTime DateTime { get; set; }
+
+        public DateTime TaskDate { get; set; }
+
+        public string Source {  get; set; }
+  
+    }
+    public class ComplaintNotificationFM
+    {
+        public int TicketId { get; set; }
+        public string LocationName { get; set; }
+        public string CurrentStatus { get; set; }
+        public DateTime FMdateTime { get; set; }
+        public string FMRemark { get; set; }
+        public DateTime TicketDate { get; set; }
+        public DateTime TransactionDate { get; set; }
+    }
+
+    public class ComplaintChatNotification
+    {
+        public int TicketId { get; set; }
+        public string CurrentStatus { get; set; }
+        public string Remark { get; set; }
+        public DateTime DateTime { get; set; }
+        public string Source { get; set; }   // "FM" or "SUP"
+    }
+
+    public class TestInputData
+    {
+        public string Name { get; set; }
+        public string Location { get; set; }
+        public DateTime DateFrom { get; set; }
+        public DateTime DateTo { get; set; }
+        public string Remarks { get; set; }
+        public string Occurence { get; set; }
+        public int CreatedBy { get; set; }
+        public DateTime CreatedOn { get; set; }
+        public int AssignTo { get; set; }
+        public string RemindMe { get; set; }
+        public int AssetsID { get; set; }
+        public string QRCode { get; set; }
+        public string Description { get; set; }
+        public List<QuestionModel> Questions { get; set; }
+    }
+
+    public class QuestionModel
+    {
+        public string QuestionName { get; set; }
+
+        public int QuestionId { get; set; }
+        public string CreatedBy { get; set; }
+        public DateTime CreatedOn { get; set; }
+    }
+
+    public class FacilityMemberDto
+    {
+        public int FacilityMemberId { get; set; }
+        public int? PropertyId { get; set; }
+        public string Name { get; set; }
+        public string Gender { get; set; }
+        public string MobileNumber { get; set; }
+        public string Address { get; set; }
+        public int? FacilityMasterId { get; set; }
+        public string ProfileImageUrl { get; set; }
+        public bool? IsBlocked { get; set; }
+        public string AccessCode { get; set; }
+        public bool IsApproved { get; set; }
+        public DateTime? ApprovedOn { get; set; }
+        public int? ApprovedBy { get; set; }
+        public bool? IsActive { get; set; }
+        public bool? IsDeleted { get; set; }
+        public int CreatedBy { get; set; }
+        public DateTime CreatedOn { get; set; }
+        public int? UpdatedBy { get; set; }
+        public DateTime? UpdatedOn { get; set; }
+        public int? OldID { get; set; }
+        public string Password { get; set; }
+
+        // Extra fields from JOINs
+        public string PropertyName { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+
+    }
+
+    public class UfirmEmployeeLocation
+    {
+        public int FacilityMemberId { get; set; }
+        public string MobileNumber { get; set; }
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public bool IsActive { get; set; }
+        public string LocationName { get; set; }
+
+        public string Type { get; set; } 
     }
 
 }
