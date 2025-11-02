@@ -1,7 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Configuration;
-using System.Data;
 using System.Data.SqlClient;
 using System.Threading.Tasks;
 using System.Web.Http;
@@ -14,7 +13,7 @@ namespace UrestComplaintWebApi.Controllers
     {
         private readonly string constr = ConfigurationManager.ConnectionStrings["adoConnectionstring"].ConnectionString;
 
-        // GET: api/products
+        // ✅ GET: api/itemmaster/getItem
         [HttpGet]
         [Route("getItem")]
         public async Task<IHttpActionResult> GetAllProducts()
@@ -41,7 +40,50 @@ namespace UrestComplaintWebApi.Controllers
             return Ok(list);
         }
 
-        // POST: api/products
+        [HttpGet]
+        [Route("getItemByName/{name}")]
+        public async Task<IHttpActionResult> GetItemByName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest("Item name is required.");
+
+            var items = new List<Item>();
+
+            using (var conn = new SqlConnection(constr))
+            {
+                await conn.OpenAsync();
+                string query = @"
+            SELECT id, name, specification 
+            FROM app.itemmaster 
+            WHERE LOWER(name) LIKE LOWER('%' + @name + '%')
+            ORDER BY name;";
+
+                using (var cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@name", name);
+
+                    using (var reader = await cmd.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync()) // <-- ✅ changed from IF to WHILE
+                        {
+                            items.Add(new Item
+                            {
+                                Id = Convert.ToInt32(reader["id"]),
+                                Name = reader["name"].ToString(),
+                                Specification = reader["specification"].ToString()
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (items.Count == 0)
+                return NotFound();
+
+            return Ok(items);
+        }
+
+        // ✅ POST: api/itemmaster/postitem
         [HttpPost]
         [Route("postitem")]
         public async Task<IHttpActionResult> AddProduct([FromBody] Item model)
