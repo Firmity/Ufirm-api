@@ -303,6 +303,88 @@ namespace UrestComplaintWebApi.Controllers
                           string.Join(", ", userContacts.Select(u => $"{u.Name} ({u.MobileNumber})")));
             }
 
+        [HttpGet]
+        [Route("api/Asset/ScheduleServiceReminder")]
+        public IHttpActionResult ScheduleServiceReminder()
+        {
+            try
+            {
+                using (var connection = new SqlConnection(constr))
+                {
+                    connection.Open();
+
+                    // Select assets with service due or upcoming in next 7 days
+                    string query = @"
+                SELECT A.Id, A.Name, A.NextServiceDate, A.PropertyId,A.LastServiceDate
+                FROM AssetMaster A
+                WHERE 
+                    A.NextServiceDate IS NOT NULL
+                    AND A.NextServiceDate <= DATEADD(day, 7, GETDATE())";
+
+                    using (var command = new SqlCommand(query, connection))
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string propertyId = reader["PropertyId"].ToString();
+                            string assetName = reader["Name"].ToString();
+                            DateTime nextServiceDate = Convert.ToDateTime(reader["NextServiceDate"]);
+                            DateTime lastServiceDate = Convert.ToDateTime(reader["LastServiceDate"]);
+                            string itemDetails = "";
+
+                            if (nextServiceDate < DateTime.Now.Date)
+                            {
+                                itemDetails = $"{assetName} Overdue on {lastServiceDate:dd-MMM-yyyy}";
+                            }
+                            else
+                            {
+                                itemDetails = $"{assetName} Upcoming on {nextServiceDate:dd-MMM-yyyy}";
+                            }
+
+                            // Call your SMS API
+                            SendSmsApi(propertyId, itemDetails);
+                        }
+                    }
+                }
+
+                return Ok("✅ SMS reminder job executed successfully.");
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+        private void SendSmsApi(string propertyId, string itemDetails)
+        {
+            try
+            {
+                var payload = new
+                {
+                    propertyId = propertyId,
+                    ItemDetails = itemDetails
+                };
+
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(payload);
+
+                using (var client = new WebClient())
+                {
+                    client.Headers[HttpRequestHeader.ContentType] = "application/json";
+
+                    string smsApiUrl = "https://api.urest.in:8096/api/sms/AssetServiceNotification"; // check this
+
+                    string response = client.UploadString(smsApiUrl, "POST", json);
+                    System.Diagnostics.Debug.WriteLine("✅ SMS API response: " + response);
+                }
+            }
+            catch (WebException ex)
+            {
+                using (var reader = new StreamReader(ex.Response.GetResponseStream()))
+                {
+                    string responseText = reader.ReadToEnd();
+                    throw new Exception($"SMS API error: {ex.Message}\nResponse: {responseText}");
+                }
+            }
+        }
 
         [HttpPost]
         [Route("FMComplaintNotification")]
@@ -433,4 +515,5 @@ u.FirstName,
     return userContacts;
         }
     }
+
 }

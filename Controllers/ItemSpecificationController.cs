@@ -14,7 +14,7 @@ namespace UrestComplaintWebApi.Controllers
     {
         private readonly string constr = ConfigurationManager.ConnectionStrings["adoConnectionstring"].ConnectionString;
 
-        // ✅ GET: api/itemspecifications/getAll/propertyId/{propertyId}
+        // ✅ GET all active items by propertyId (with details)
         [HttpGet]
         [Route("getAll/propertyId/{propertyId:int}")]
         public async Task<IHttpActionResult> GetAll(int propertyId)
@@ -24,14 +24,13 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = @"SELECT id, item_name, gender, quantity, specification_id, specification_value, 
-                                        propertyId, created_on, updated_on, property_id, isRequisition, isHandover
-                                 FROM app.ItemSpecifications
-                                 WHERE propertyId = @propertyId";
 
+                string query = @"SELECT * FROM app.ItemSpecifications 
+                                 WHERE propertyId = @propertyId AND is_active = 1";
                 using (var cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@propertyId", propertyId);
+
                     using (var reader = await cmd.ExecuteReaderAsync())
                     {
                         while (await reader.ReadAsync())
@@ -40,29 +39,54 @@ namespace UrestComplaintWebApi.Controllers
                             {
                                 Id = Convert.ToInt32(reader["id"]),
                                 Item_Name = reader["item_name"].ToString(),
-                                Gender = reader["gender"].ToString(),
+                                Gender = reader["gender"]?.ToString(),
                                 Quantity = Convert.ToInt32(reader["quantity"]),
-                                Specification_Id = Convert.ToInt32(reader["specification_id"]),
-                                Specification_Value = Convert.ToInt32(reader["specification_value"]),
                                 PropertyId = Convert.ToInt32(reader["propertyId"]),
-                                Created_On = Convert.ToDateTime(reader["created_on"]),
-                                Updated_On = Convert.ToDateTime(reader["updated_on"]),
-                                Property_Id = Convert.ToInt32(reader["property_id"]),
                                 IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
-                                IsHandover = Convert.ToBoolean(reader["isHandover"])
+                                IsHandover = Convert.ToBoolean(reader["isHandover"]),
+                                Is_Active = Convert.ToBoolean(reader["is_active"]),
+                                Created_On = Convert.ToDateTime(reader["created_on"]),
+                                Updated_On = Convert.ToDateTime(reader["updated_on"])
                             });
+                        }
+                    }
+                }
+
+                // Fetch active details for each item
+                foreach (var item in items)
+                {
+                    item.Details = new List<ItemSpecificationDetail>();
+
+                    string detailsQuery = @"SELECT * FROM app.ItemSpecificationDetails 
+                                            WHERE item_specification_id = @id AND is_active = 1";
+                    using (var cmdDetails = new SqlCommand(detailsQuery, conn))
+                    {
+                        cmdDetails.Parameters.AddWithValue("@id", item.Id);
+                        using (var readerDetails = await cmdDetails.ExecuteReaderAsync())
+                        {
+                            while (await readerDetails.ReadAsync())
+                            {
+                                item.Details.Add(new ItemSpecificationDetail
+                                {
+                                    Id = Convert.ToInt32(readerDetails["id"]),
+                                    Item_Specification_Id = item.Id,
+                                    Specification_Name = readerDetails["specification_name"].ToString(),
+                                    Specification_Value = readerDetails["specification_value"].ToString(),
+                                    Is_Active = Convert.ToBoolean(readerDetails["is_active"])
+                                });
+                            }
                         }
                     }
                 }
             }
 
             if (items.Count == 0)
-                return Content(HttpStatusCode.NotFound, "No items found for the given propertyId");
+                return Content(HttpStatusCode.NotFound, "No active items found for the given propertyId");
 
             return Ok(items);
         }
 
-        // ✅ GET by ID
+        // ✅ GET by ID (with details)
         [HttpGet]
         [Route("getById/{id:int}")]
         public async Task<IHttpActionResult> GetById(int id)
@@ -72,8 +96,9 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = @"SELECT * FROM app.ItemSpecifications WHERE id = @id";
 
+                string query = @"SELECT * FROM app.ItemSpecifications 
+                                 WHERE id = @id AND is_active = 1";
                 using (var cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@id", id);
@@ -85,127 +110,120 @@ namespace UrestComplaintWebApi.Controllers
                             {
                                 Id = Convert.ToInt32(reader["id"]),
                                 Item_Name = reader["item_name"].ToString(),
-                                Gender = reader["gender"].ToString(),
+                                Gender = reader["gender"]?.ToString(),
                                 Quantity = Convert.ToInt32(reader["quantity"]),
-                                Specification_Id = Convert.ToInt32(reader["specification_id"]),
-                                Specification_Value = Convert.ToInt32(reader["specification_value"]),
                                 PropertyId = Convert.ToInt32(reader["propertyId"]),
+                                IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
+                                IsHandover = Convert.ToBoolean(reader["isHandover"]),
+                                Is_Active = Convert.ToBoolean(reader["is_active"]),
                                 Created_On = Convert.ToDateTime(reader["created_on"]),
                                 Updated_On = Convert.ToDateTime(reader["updated_on"]),
-                                Property_Id = Convert.ToInt32(reader["property_id"]),
-                                IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
-                                IsHandover = Convert.ToBoolean(reader["isHandover"])
+                                Details = new List<ItemSpecificationDetail>()
                             };
                         }
                     }
                 }
-            }
 
-            if (item == null)
-                return NotFound();
+                if (item == null)
+                    return NotFound();
 
-            return Ok(item);
-        }
-
-        [HttpGet]
-        [Route("getGroupedByItem/propertyId/{propertyId:int}")]
-        public async Task<IHttpActionResult> GetGroupedByItem(int propertyId)
-        {
-            var groupedItems = new List<object>();
-
-            using (var conn = new SqlConnection(constr))
-            {
-                await conn.OpenAsync();
-
-                string query = @"
-            SELECT 
-                item_name,
-                MAX(gender) AS gender,
-                SUM(quantity) AS total_quantity,
-                MAX(created_on) AS last_created,
-                MAX(updated_on) AS last_updated,
-                MAX(specification_id) AS specification_id,
-                MAX(specification_value) AS specification_value,
-                MAX(isRequisition) AS isRequisition,
-                MAX(isHandover) AS isHandover
-            FROM app.ItemSpecifications
-            WHERE propertyId = @propertyId
-            GROUP BY item_name
-            ORDER BY item_name;";
-
-                using (var cmd = new SqlCommand(query, conn))
+                string detailsQuery = @"SELECT * FROM app.ItemSpecificationDetails 
+                                        WHERE item_specification_id = @id AND is_active = 1";
+                using (var cmdDetails = new SqlCommand(detailsQuery, conn))
                 {
-                    cmd.Parameters.AddWithValue("@propertyId", propertyId);
-
-                    using (var reader = await cmd.ExecuteReaderAsync())
+                    cmdDetails.Parameters.AddWithValue("@id", id);
+                    using (var readerDetails = await cmdDetails.ExecuteReaderAsync())
                     {
-                        while (await reader.ReadAsync())
+                        while (await readerDetails.ReadAsync())
                         {
-                            groupedItems.Add(new
+                            item.Details.Add(new ItemSpecificationDetail
                             {
-                                Item_Name = reader["item_name"].ToString(),
-                                Gender = reader["gender"].ToString(),
-                                Total_Quantity = Convert.ToInt32(reader["total_quantity"]),
-                                Specification_Id = Convert.ToInt32(reader["specification_id"]),
-                                Specification_Value = Convert.ToInt32(reader["specification_value"]),
-                                IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
-                                IsHandover = Convert.ToBoolean(reader["isHandover"]),
-                                Last_Created = Convert.ToDateTime(reader["last_created"]),
-                                Last_Updated = Convert.ToDateTime(reader["last_updated"])
+                                Id = Convert.ToInt32(readerDetails["id"]),
+                                Item_Specification_Id = id,
+                                Specification_Name = readerDetails["specification_name"].ToString(),
+                                Specification_Value = readerDetails["specification_value"].ToString(),
+                                Is_Active = Convert.ToBoolean(readerDetails["is_active"])
                             });
                         }
                     }
                 }
             }
 
-            if (groupedItems.Count == 0)
-                return Content(HttpStatusCode.NotFound, "No grouped items found for the given propertyId");
-
-            return Ok(groupedItems);
+            return Ok(item);
         }
 
-
-
-        // ✅ POST
+        // ✅ POST multiple (main + details)
         [HttpPost]
-        [Route("create")]
-        public async Task<IHttpActionResult> Create([FromBody] ItemSpecification model)
+        [Route("createMultiple")]
+        public async Task<IHttpActionResult> CreateMultiple([FromBody] List<ItemSpecification> models)
         {
-            if (model == null || string.IsNullOrEmpty(model.Item_Name))
-                return BadRequest("Invalid data");
+            if (models == null || models.Count == 0)
+                return BadRequest("No data provided");
 
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-
-                string query = @"
-                    INSERT INTO app.ItemSpecifications 
-                        (item_name, gender, quantity, specification_id, specification_value, 
-                         propertyId, created_on, updated_on, property_id, isRequisition, isHandover)
-                    VALUES 
-                        (@item_name, @gender, @quantity, @specification_id, @specification_value, 
-                         @propertyId, GETDATE(), GETDATE(), @property_id, @isRequisition, @isHandover);
-                    SELECT SCOPE_IDENTITY();";
-
-                using (var cmd = new SqlCommand(query, conn))
+                using (var transaction = conn.BeginTransaction())
                 {
-                    cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
-                    cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
-                    cmd.Parameters.AddWithValue("@quantity", model.Quantity);
-                    cmd.Parameters.AddWithValue("@specification_id", model.Specification_Id);
-                    cmd.Parameters.AddWithValue("@specification_value", model.Specification_Value);
-                    cmd.Parameters.AddWithValue("@propertyId", model.PropertyId);
-                    cmd.Parameters.AddWithValue("@property_id", model.Property_Id);
-                    cmd.Parameters.AddWithValue("@isRequisition", model.IsRequisition);
-                    cmd.Parameters.AddWithValue("@isHandover", model.IsHandover);
+                    try
+                    {
+                        string mainInsertQuery = @"
+                            INSERT INTO app.ItemSpecifications 
+                            (item_name, gender, quantity, propertyId, isRequisition, isHandover, is_active, created_on, updated_on)
+                            VALUES (@item_name, @gender, @quantity, @propertyId, @isRequisition, @isHandover, 1, GETDATE(), GETDATE());
+                            SELECT SCOPE_IDENTITY();";
 
-                    int newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
-                    return Ok(new { message = "Record added successfully", id = newId });
+                        string detailInsertQuery = @"
+                            INSERT INTO app.ItemSpecificationDetails
+                            (item_specification_id, specification_name, specification_value, is_active)
+                            VALUES (@item_specification_id, @specification_name, @specification_value, 1);";
+
+                        var insertedIds = new List<int>();
+
+                        foreach (var model in models)
+                        {
+                            int newId;
+                            using (var cmd = new SqlCommand(mainInsertQuery, conn, transaction))
+                            {
+                                cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@quantity", model.Quantity);
+                                cmd.Parameters.AddWithValue("@propertyId", model.PropertyId);
+                                cmd.Parameters.AddWithValue("@isRequisition", model.IsRequisition);
+                                cmd.Parameters.AddWithValue("@isHandover", model.IsHandover);
+
+                                newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                                insertedIds.Add(newId);
+                            }
+
+                            if (model.Details != null)
+                            {
+                                foreach (var detail in model.Details)
+                                {
+                                    using (var cmdDetail = new SqlCommand(detailInsertQuery, conn, transaction))
+                                    {
+                                        cmdDetail.Parameters.AddWithValue("@item_specification_id", newId);
+                                        cmdDetail.Parameters.AddWithValue("@specification_name", detail.Specification_Name);
+                                        cmdDetail.Parameters.AddWithValue("@specification_value", detail.Specification_Value);
+                                        await cmdDetail.ExecuteNonQueryAsync();
+                                    }
+                                }
+                            }
+                        }
+
+                        transaction.Commit();
+                        return Ok(new { message = "Records added successfully", ids = insertedIds });
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        return InternalServerError(ex);
+                    }
                 }
             }
         }
 
-        // ✅ PUT
+        // ✅ PUT (update + details)
         [HttpPut]
         [Route("update/{id:int}")]
         public async Task<IHttpActionResult> Update(int id, [FromBody] ItemSpecification model)
@@ -216,41 +234,79 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = @"
-                    UPDATE app.ItemSpecifications
-                    SET item_name = @item_name,
-                        gender = @gender,
-                        quantity = @quantity,
-                        specification_id = @specification_id,
-                        specification_value = @specification_value,
-                        property_id = @property_id,
-                        isRequisition = @isRequisition,
-                        isHandover = @isHandover,
-                        updated_on = GETDATE()
-                    WHERE id = @id";
-
-                using (var cmd = new SqlCommand(query, conn))
+                using (var transaction = conn.BeginTransaction())
                 {
-                    cmd.Parameters.AddWithValue("@id", id);
-                    cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
-                    cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
-                    cmd.Parameters.AddWithValue("@quantity", model.Quantity);
-                    cmd.Parameters.AddWithValue("@specification_id", model.Specification_Id);
-                    cmd.Parameters.AddWithValue("@specification_value", model.Specification_Value);
-                    cmd.Parameters.AddWithValue("@property_id", model.Property_Id);
-                    cmd.Parameters.AddWithValue("@isRequisition", model.IsRequisition);
-                    cmd.Parameters.AddWithValue("@isHandover", model.IsHandover);
+                    try
+                    {
+                        string updateMain = @"
+                            UPDATE app.ItemSpecifications
+                            SET item_name = @item_name,
+                                gender = @gender,
+                                quantity = @quantity,
+                                propertyId = @propertyId,
+                                isRequisition = @isRequisition,
+                                isHandover = @isHandover,
+                                is_active = @is_active,
+                                updated_on = GETDATE()
+                            WHERE id = @id";
 
-                    int rows = await cmd.ExecuteNonQueryAsync();
-                    if (rows == 0)
-                        return Content(HttpStatusCode.NotFound, "Item not found");
+                        using (var cmd = new SqlCommand(updateMain, conn, transaction))
+                        {
+                            cmd.Parameters.AddWithValue("@id", id);
+                            cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
+                            cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
+                            cmd.Parameters.AddWithValue("@quantity", model.Quantity);
+                            cmd.Parameters.AddWithValue("@propertyId", model.PropertyId);
+                            cmd.Parameters.AddWithValue("@isRequisition", model.IsRequisition);
+                            cmd.Parameters.AddWithValue("@isHandover", model.IsHandover);
+                            cmd.Parameters.AddWithValue("@is_active", model.Is_Active);
 
-                    return Ok(new { message = "Record updated successfully" });
+                            await cmd.ExecuteNonQueryAsync();
+                        }
+
+                        // Delete existing details (soft delete)
+                        string softDeleteDetails = @"UPDATE app.ItemSpecificationDetails 
+                                                     SET is_active = 0 
+                                                     WHERE item_specification_id = @id";
+                        using (var cmdDelete = new SqlCommand(softDeleteDetails, conn, transaction))
+                        {
+                            cmdDelete.Parameters.AddWithValue("@id", id);
+                            await cmdDelete.ExecuteNonQueryAsync();
+                        }
+
+                        // Insert/Update new details
+                        if (model.Details != null)
+                        {
+                            string insertDetail = @"
+                                INSERT INTO app.ItemSpecificationDetails
+                                (item_specification_id, specification_name, specification_value, is_active)
+                                VALUES (@item_specification_id, @specification_name, @specification_value, 1);";
+
+                            foreach (var detail in model.Details)
+                            {
+                                using (var cmdDetail = new SqlCommand(insertDetail, conn, transaction))
+                                {
+                                    cmdDetail.Parameters.AddWithValue("@item_specification_id", id);
+                                    cmdDetail.Parameters.AddWithValue("@specification_name", detail.Specification_Name);
+                                    cmdDetail.Parameters.AddWithValue("@specification_value", detail.Specification_Value);
+                                    await cmdDetail.ExecuteNonQueryAsync();
+                                }
+                            }
+                        }
+
+                        transaction.Commit();
+                        return Ok(new { message = "Record updated successfully" });
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        return InternalServerError(ex);
+                    }
                 }
             }
         }
 
-        // ✅ DELETE
+        // ✅ SOFT DELETE main + details (set is_active = 0)
         [HttpDelete]
         [Route("delete/{id:int}")]
         public async Task<IHttpActionResult> Delete(int id)
@@ -258,17 +314,38 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = "DELETE FROM app.ItemSpecifications WHERE id = @id";
-
-                using (var cmd = new SqlCommand(query, conn))
+                using (var transaction = conn.BeginTransaction())
                 {
-                    cmd.Parameters.AddWithValue("@id", id);
-                    int rows = await cmd.ExecuteNonQueryAsync();
+                    try
+                    {
+                        string deactivateDetails = "UPDATE app.ItemSpecificationDetails SET is_active = 0 WHERE item_specification_id = @id";
+                        string deactivateMain = "UPDATE app.ItemSpecifications SET is_active = 0 WHERE id = @id";
 
-                    if (rows == 0)
-                        return Content(HttpStatusCode.NotFound, "Item not found");
+                        using (var cmd1 = new SqlCommand(deactivateDetails, conn, transaction))
+                        {
+                            cmd1.Parameters.AddWithValue("@id", id);
+                            await cmd1.ExecuteNonQueryAsync();
+                        }
 
-                    return Ok(new { message = "Record deleted successfully" });
+                        using (var cmd2 = new SqlCommand(deactivateMain, conn, transaction))
+                        {
+                            cmd2.Parameters.AddWithValue("@id", id);
+                            int rows = await cmd2.ExecuteNonQueryAsync();
+                            if (rows == 0)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, "Item not found");
+                            }
+                        }
+
+                        transaction.Commit();
+                        return Ok(new { message = "Record deactivated successfully" });
+                    }
+                    catch (Exception ex)
+                    {
+                        transaction.Rollback();
+                        return InternalServerError(ex);
+                    }
                 }
             }
         }

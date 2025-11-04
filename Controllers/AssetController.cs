@@ -312,235 +312,128 @@ VALUES
         }
 
         [HttpPost]
-        [Route("SaveServiceRecord")]
-        [SwaggerOperation("SaveServiceRecord")]
-        [SwaggerResponse(System.Net.HttpStatusCode.OK, "Service record saved successfully.")]
-        [SwaggerResponse(System.Net.HttpStatusCode.BadRequest, "Invalid input data.")]
-        [SwaggerResponse(System.Net.HttpStatusCode.InternalServerError, "Server error.")]
+        [Route("api/Asset/SaveServiceRecord")]
         public IHttpActionResult SaveServiceRecord()
         {
             try
             {
                 var httpRequest = HttpContext.Current.Request;
 
-                // Read form fields
+                // ✅ Validate required fields
+                if (string.IsNullOrWhiteSpace(httpRequest.Form["AssetId"]) ||
+                    string.IsNullOrWhiteSpace(httpRequest.Form["ServiceDate"]) ||
+                    string.IsNullOrWhiteSpace(httpRequest.Form["NextServiceDate"]))
+                {
+                    return BadRequest("AssetId, ServiceDate, and NextServiceDate are required.");
+                }
+
                 int assetId = Convert.ToInt32(httpRequest.Form["AssetId"]);
-                string serviceDate = httpRequest.Form["ServiceDate"];
-                string nextServiceDate = httpRequest.Form["NextServiceDate"];
+                DateTime serviceDate = Convert.ToDateTime(httpRequest.Form["ServiceDate"]);
+                DateTime nextServiceDate = Convert.ToDateTime(httpRequest.Form["NextServiceDate"]);
                 string remark = httpRequest.Form["Remark"];
-                string serviceCost = httpRequest.Form["ServiceCost"];
                 string servicedBy = httpRequest.Form["ServicedBy"];
                 string approvedBy = httpRequest.Form["ApprovedBy"];
 
-                // Validation
-                if (assetId <= 0 || string.IsNullOrWhiteSpace(serviceDate) || string.IsNullOrWhiteSpace(nextServiceDate))
-                    return BadRequest("Invalid input data.");
+                decimal serviceCost = 0;
+                decimal.TryParse(httpRequest.Form["ServiceCost"], out serviceCost);
 
-                string uploadRoot = HttpContext.Current.Server.MapPath("~/Uploads/");
-                if (!Directory.Exists(uploadRoot))
-                    Directory.CreateDirectory(uploadRoot);
-
+                // ✅ File handling
                 string imageUrl = null;
-                string serviceDocUrl = null;
+                string docUrl = null;
 
-                var imageFile = httpRequest.Files["Image"];
-                var docFile = httpRequest.Files["ServiceDoc"];
+                HttpPostedFile imageFile = httpRequest.Files["ServiceImg"];
+                HttpPostedFile docFile = httpRequest.Files["ServiceDoc"];
 
-                // Save image file
+                // 🔹 Save only if file exists
                 if (imageFile != null && imageFile.ContentLength > 0)
                 {
-                    string fileName = Guid.NewGuid() + "_" + Path.GetFileName(imageFile.FileName);
-                    string savePath = Path.Combine(uploadRoot, fileName);
-                    imageFile.SaveAs(savePath);
-                    imageUrl = "/Uploads/Serviceimg/" + fileName;
+                    imageUrl = SaveFile(imageFile, @"C:\inetpub\wwwroot\URestAPI\Uploads\Serviceimg\", "Uploads/Serviceimg/");
                 }
 
-                // Save doc file
                 if (docFile != null && docFile.ContentLength > 0)
                 {
-                    string fileName = Guid.NewGuid() + "_" + Path.GetFileName(docFile.FileName);
-                    string savePath = Path.Combine(uploadRoot, fileName);
-                    docFile.SaveAs(savePath);
-                    serviceDocUrl = "/Uploads/Servicedoc/" + fileName;
+                    docUrl = SaveFile(docFile, @"C:\inetpub\wwwroot\URestAPI\Uploads\Servicedoc\", "Uploads/Servicedoc/");
                 }
 
-                // Save record to database
-                using (var con = new SqlConnection(constr))
+                // ✅ Insert record and update asset
+                using (var connection = new SqlConnection(constr))
                 {
-                    con.Open();
+                    connection.Open();
+
                     string query = @"
-                    INSERT INTO AssetServiceRecord 
+                INSERT INTO AssetServiceRecord 
                     (AssetId, ServiceDate, NextServiceDate, Image, Remark, ServiceDoc, ServiceCost, ServicedBy, ApprovedBy)
-                    VALUES 
-                    (@assetid, @servicedate, @nextservicedate, @image, @remark, @servicedoc, @servicecost, @servicedby, @approvedby);
+                VALUES 
+                    (@AssetId, @ServiceDate, @NextServiceDate, @Image, @Remark, @ServiceDoc, @ServiceCost, @ServicedBy, @ApprovedBy);
 
-                    UPDATE AssetMaster
-                    SET LastServiceDate = @servicedate,
-                        NextServiceDate = @nextservicedate
-                    WHERE Id = @assetid;
-                ";
+                UPDATE AssetMaster
+                SET LastServiceDate = @ServiceDate,
+                    NextServiceDate = @NextServiceDate
+                WHERE Id = @AssetId;
+            ";
 
-                    using (var cmd = new SqlCommand(query, con))
+                    using (var cmd = new SqlCommand(query, connection))
                     {
-                        cmd.Parameters.AddWithValue("@assetid", assetId);
-                        cmd.Parameters.AddWithValue("@servicedate", serviceDate);
-                        cmd.Parameters.AddWithValue("@nextservicedate", nextServiceDate);
-                        cmd.Parameters.AddWithValue("@remark", (object)remark ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@servicecost", (object)serviceCost ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@servicedby", (object)servicedBy ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@approvedby", (object)approvedBy ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@image", (object)imageUrl ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@servicedoc", (object)serviceDocUrl ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@AssetId", assetId);
+                        cmd.Parameters.AddWithValue("@ServiceDate", serviceDate);
+                        cmd.Parameters.AddWithValue("@NextServiceDate", nextServiceDate);
+                        cmd.Parameters.AddWithValue("@Image", (object)imageUrl ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Remark", string.IsNullOrWhiteSpace(remark) ? (object)DBNull.Value : remark);
+                        cmd.Parameters.AddWithValue("@ServiceDoc", (object)docUrl ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ServiceCost", serviceCost);
+                        cmd.Parameters.AddWithValue("@ServicedBy", string.IsNullOrWhiteSpace(servicedBy) ? (object)DBNull.Value : servicedBy);
+                        cmd.Parameters.AddWithValue("@ApprovedBy", string.IsNullOrWhiteSpace(approvedBy) ? (object)DBNull.Value : approvedBy);
 
-                        int rows = cmd.ExecuteNonQuery();
-                        if (rows > 0)
-                            return Ok(new { Message = "Service record saved successfully.", ImageUrl = imageUrl, ServiceDocUrl = serviceDocUrl });
+                        int result = cmd.ExecuteNonQuery();
+
+                        if (result > 0)
+                        {
+                            return Ok(new
+                            {
+                                message = "✅ Service Record added successfully.",
+                                imageUrl,
+                                docUrl
+                            });
+                        }
                         else
-                            return InternalServerError(new Exception("Database insert failed."));
+                        {
+                            return InternalServerError(new Exception("Failed to insert service record."));
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                return InternalServerError(new Exception("An error occurred: " + ex.Message));
+                // 🔹 Return clean error message
+                return InternalServerError(new Exception("❌ Error while saving record: " + ex.Message));
             }
         }
 
-        [HttpPost]
-        [Route("SaveFMServiceResponse")]
-        public IHttpActionResult SaveFMServiceResponse()
+        private string SaveFile(HttpPostedFile file, string physicalFolder, string virtualFolder)
         {
             try
             {
-                var httpRequest = HttpContext.Current.Request;
-
-                // ✅ Map form data to model
-                var model = new FMServiceResponseModel
+                if (!Directory.Exists(physicalFolder))
                 {
-                    AssetId = Convert.ToInt32(httpRequest.Form["AssetId"]),
-                    ServiceDate = httpRequest.Form["ServiceDate"],
-                    NextServiceDate = httpRequest.Form["NextServiceDate"],
-                    Remark = httpRequest.Form["Remark"],
-                    ServicedBy = httpRequest.Form["ServicedBy"],
-                    ApprovedBy = httpRequest.Form["ApprovedBy"],
-                    ServiceCost = string.IsNullOrEmpty(httpRequest.Form["ServiceCost"])
-                        ? 0
-                        : Convert.ToDecimal(httpRequest.Form["ServiceCost"])
-                };
-
-                string imagePath = null;
-                string docPath = null;
-
-                // ✅ Handle image upload
-                var imageFile = httpRequest.Files["Image"];
-                if (imageFile != null && imageFile.ContentLength > 0)
-                {
-                    string imageName = model.AssetId + "_service" + Path.GetExtension(imageFile.FileName);
-                    string imageSavePath = HttpContext.Current.Server.MapPath("~/Uploads/Serviceimg/" + imageName);
-                    imageFile.SaveAs(imageSavePath);
-                    imagePath = "https://api.urest.in:8096/Uploads/Serviceimg/" + imageName;
+                    Directory.CreateDirectory(physicalFolder);
                 }
 
-                // ✅ Handle service document upload
-                var docFile = httpRequest.Files["ServiceDoc"];
-                if (docFile != null && docFile.ContentLength > 0)
-                {
-                    string docName = model.AssetId + "_record" + Path.GetExtension(docFile.FileName);
-                    string docSavePath = HttpContext.Current.Server.MapPath("~/Uploads/Servicedoc/" + docName);
-                    docFile.SaveAs(docSavePath);
-                    docPath = "https://api.urest.in:8096/Uploads/Servicedoc/" + docName;
-                }
+                string fileName = Guid.NewGuid() + Path.GetExtension(file.FileName);
+                string filePath = Path.Combine(physicalFolder, fileName);
 
-                // ✅ Insert into database
-                using (var con = new SqlConnection(constr))
-                {
-                    con.Open();
-                    string query = @"
-                        INSERT INTO AssetServiceRecord
-                        (AssetId, ServiceDate, NextServiceDate, Image, Remark, ServiceDoc, ServiceCost, ServicedBy, ApprovedBy)
-                        VALUES (@AssetId, @ServiceDate, @NextServiceDate, @Image, @Remark, @ServiceDoc, @ServiceCost, @ServicedBy, @ApprovedBy)";
+                file.SaveAs(filePath);
 
-                    using (var cmd = new SqlCommand(query, con))
-                    {
-                        cmd.Parameters.AddWithValue("@AssetId", model.AssetId);
-                        cmd.Parameters.AddWithValue("@ServiceDate", model.ServiceDate);
-                        cmd.Parameters.AddWithValue("@NextServiceDate", model.NextServiceDate);
-                        cmd.Parameters.AddWithValue("@Image", (object)imagePath ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Remark", (object)model.Remark ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ServiceDoc", (object)docPath ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ServiceCost", model.ServiceCost);
-                        cmd.Parameters.AddWithValue("@ServicedBy", (object)model.ServicedBy ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ApprovedBy", (object)model.ApprovedBy ?? DBNull.Value);
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-
-                return Ok(new
-                {
-                    Message = "Service record saved successfully",
-                    Image = imagePath,
-                    ServiceDoc = docPath
-                });
+                // 🔹 Public URL generation
+                string baseUrl = "https://api.urest.in:8096/";
+                string fileUrl = $"{baseUrl}{virtualFolder}{fileName}".Replace("\\", "/");
+                return fileUrl;
             }
             catch (Exception ex)
             {
-                return InternalServerError(ex);
+                throw new Exception("File save error: " + ex.Message);
             }
         }
 
-
-
-
-        private void PopulateCommandParameters(SqlCommand command, AssetServiceRecord record)
-        {
-            command.Parameters.AddWithValue("@AssetId", record.AssetId);
-            command.Parameters.AddWithValue("@LastServiceDate", ConvertToDateTime(record.ServiceDate) ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("@NextServiceDate", ConvertToDateTime(record.NextServiceDate) ?? (object)DBNull.Value);
-
-            // Handle Image
-            if (record.Image != null && record.Image.ContentLength > 0)
-            {
-                string imagePath = SaveFile(record.Image, "~/Uploads/Serviceimg/");
-                command.Parameters.AddWithValue("@Image", imagePath);
-            }
-            else
-            {
-                command.Parameters.AddWithValue("@Image", DBNull.Value);
-            }
-
-            // Handle ServiceDoc
-            if (record.ServiceDoc != null && record.ServiceDoc.ContentLength > 0)
-            {
-                string docPath = SaveFile(record.ServiceDoc, "~/Uploads/Servicedoc/");
-                command.Parameters.AddWithValue("@ServiceDoc", docPath);
-            }
-            else
-            {
-                command.Parameters.AddWithValue("@ServiceDoc", DBNull.Value);
-            }
-
-            command.Parameters.AddWithValue("@Remark", string.IsNullOrWhiteSpace(record.Remark) ? (object)DBNull.Value : record.Remark);
-            command.Parameters.AddWithValue("@ServiceCost", record.ServiceCost);
-            command.Parameters.AddWithValue("@ServicedBy", string.IsNullOrWhiteSpace(record.ServicedBy) ? (object)DBNull.Value : record.ServicedBy);
-            command.Parameters.AddWithValue("@ApprovedBy", string.IsNullOrWhiteSpace(record.ApprovedBy) ? (object)DBNull.Value : record.ApprovedBy);
-        }
-
-        private string SaveFile(HttpPostedFileBase file, string virtualFolder)
-        {
-            string fileName = Path.GetFileName(file.FileName);
-            string folderPath = HttpContext.Current.Server.MapPath(virtualFolder);
-
-            if (!Directory.Exists(folderPath))
-                Directory.CreateDirectory(folderPath);
-
-            string filePath = Path.Combine(folderPath, fileName);
-            file.SaveAs(filePath);
-
-            // Return public URL
-            string baseUrl = "https://api.urest.in:8096";
-            string publicUrl = $"{baseUrl}{virtualFolder.Replace("~", "")}{fileName}";
-            return publicUrl;
-        }
 
 
         // Helper method to safely convert a string to DateTime

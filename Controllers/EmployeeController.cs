@@ -254,7 +254,7 @@ namespace UrestComplaintWebApi.Controllers
             ) wh ON p.EmployeeID = wh.EmployeeID
             LEFT JOIN (
                 SELECT EmployeeID, BankAccountNumber, BankIFSCCode, BankName, UANNumber, PANNumber, 
-                       CreatedOn, UpdatedOn, IsActive
+                       CreatedOn, UpdatedOn, IsActive,PF_number,ESINumber
                 FROM (
                     SELECT *, ROW_NUMBER() OVER(PARTITION BY EmployeeID ORDER BY CreatedOn DESC) rn
                     FROM App.Emp_Financial_Info
@@ -354,7 +354,7 @@ namespace UrestComplaintWebApi.Controllers
                                         CreatedOn = GetDate(reader, "FICreatedOn") ?? DateTime.MinValue,
                                         UpdatedOn = GetDate(reader, "FIUpdatedOn") ?? DateTime.MinValue,
                                         IsActive = GetBool(reader, "FIIsActive"),
-                                        PFNumber= GetString(reader,"PFNumber"),
+                                        PFNumber= GetString(reader,"PF_number"),
                                         ESINumber=GetString(reader,"ESINumber")
                                     }
                                 };
@@ -753,9 +753,7 @@ namespace UrestComplaintWebApi.Controllers
                         cmd.Parameters.AddWithValue("@Emp_ID", employee.EmployeeId);
                         cmd.Parameters.AddWithValue("@Employee_Name", employee.EmployeeName);
                         cmd.Parameters.AddWithValue("@Office_id", employee.OfficeId);
-                        cmd.Parameters.AddWithValue("@CreatedOn", employee.CreatedOn == default(DateTime)
-                                                                ? DateTime.Now
-                                                                : employee.CreatedOn);
+                        cmd.Parameters.AddWithValue("@CreatedOn", employee.CreatedOn);
                         cmd.Parameters.AddWithValue("@Month", employee.Month);
                         cmd.Parameters.AddWithValue("@Year", employee.Year);
                         cmd.Parameters.AddWithValue("@is_active", 1);

@@ -105,9 +105,12 @@ namespace UrestComplaintWebApi.Controllers
         // ---------------------------
         // UPDATE ONLY WORKING, LEAVE & WEEKDAYS OFF
         // ---------------------------
+        // ---------------------------
+        // UPDATE WORKING, LEAVE & WEEKDAYS OFF BY EmpID AND monthyear
+        // ---------------------------
         [HttpPut]
-        [Route("{empId:int}")]
-        public async Task<IHttpActionResult> UpdateAttendance(int empId, [FromBody] AttendanceSummaryDto model)
+        [Route("{empId:int}/{monthyear}")]
+        public async Task<IHttpActionResult> UpdateAttendance(int empId, string monthyear, [FromBody] AttendanceSummaryDto model)
         {
             if (model == null)
                 return BadRequest("Invalid data.");
@@ -116,20 +119,28 @@ namespace UrestComplaintWebApi.Controllers
             {
                 await conn.OpenAsync();
 
-                var query = @"UPDATE App.AttendanceSummary
-                              SET WorkingDays=@WorkingDays,
-                                  LeaveDays=@LeaveDays,
-                                  WeekDaysOff=@WeekDaysOff
-                              WHERE EmpID=@EmpID AND is_active=1;";
+                var query = @"
+            UPDATE App.AttendanceSummary
+            SET WorkingDays = @WorkingDays,
+                LeaveDays = @LeaveDays,
+                WeekDaysOff = @WeekDaysOff
+            WHERE EmpID = @EmpID 
+              AND monthyear = @monthyear
+              AND is_active = 1;
+        ";
 
                 using (var cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@EmpID", empId);
+                    cmd.Parameters.AddWithValue("@monthyear", monthyear);
                     cmd.Parameters.AddWithValue("@WorkingDays", (object)model.WorkingDays ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@LeaveDays", (object)model.LeaveDays ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@WeekDaysOff", (object)model.WeekDaysOff ?? DBNull.Value);
+
                     int rows = await cmd.ExecuteNonQueryAsync();
-                    if (rows == 0) return NotFound();
+
+                    if (rows == 0)
+                        return NotFound();
                 }
             }
 
