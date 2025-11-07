@@ -211,26 +211,31 @@ namespace UrestComplaintWebApi.Controllers
         [HttpPost]
         public async Task<IHttpActionResult> SendCOMPPSMS(string ToSendMobileNo, string TicketId)
         {
-            string Sender = "URSTCP";
-            string message = $"Your ticket {TicketId} has been successfully logged and would be attended shorlty.\n-Team Urest\nUFIRM TECHNOLOGIES PVT LTD";
+            var integrations = new Integrations(); // Make sure to initialize this
+            string senderId = "URSTCP";
+            string templateId = "1207174237698325760"; // Replace with your real DLT template ID
+            string variableValues = TicketId; // matches {#var#} placeholder
+
             try
             {
-                bool isSent = await integrations.SendSMSAsync(ToSendMobileNo, message,Sender);
+                bool isSent = await integrations.SendDLTSMSAsync(
+                    ToSendMobileNo,
+                    templateId,
+                    senderId,
+                    variableValues
+                );
 
                 if (isSent)
-                {
                     return Ok(new { success = true, message = "SMS sent successfully!" });
-                }
                 else
-                {
                     return BadRequest("Failed to send SMS.");
-                }
             }
             catch (Exception ex)
             {
                 return InternalServerError(new Exception("Internal Server Error: " + ex.Message));
             }
         }
+
 
         [Route ("Complaint")]
         [HttpGet]

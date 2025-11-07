@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
+using System.IO;
 using System.Net;
+using System.Web;
 using System.Web.Http;
 using UrestComplaintWebApi.Models;
 
@@ -951,6 +953,100 @@ namespace UrestComplaintWebApi.Controllers
                 });
             }
         }
+
+        [HttpPost]
+        [Route("api/employee/updateGeneratedSalaryDoc")]
+        public IHttpActionResult UpdateGeneratedSalaryDocument()
+        {
+            try
+            {
+                var httpRequest = HttpContext.Current.Request;
+
+                // 🔹 Validate required fields
+                if (string.IsNullOrWhiteSpace(httpRequest.Form["Emp_ID"]) ||
+                    string.IsNullOrWhiteSpace(httpRequest.Form["Month"]) ||
+                    string.IsNullOrWhiteSpace(httpRequest.Form["Year"]))
+                {
+                    return BadRequest("Emp_ID, Month, and Year are required to update document.");
+                }
+
+                int empId = Convert.ToInt32(httpRequest.Form["Emp_ID"]);
+                string month = httpRequest.Form["Month"];
+                int year = Convert.ToInt32(httpRequest.Form["Year"]);
+
+                // 🔹 Handle uploaded file
+                HttpPostedFile docFile = httpRequest.Files["SalaryDoc"];
+                if (docFile == null || docFile.ContentLength == 0)
+                    return BadRequest("Salary document file is required.");
+
+                // 🔹 Save the new file
+                string docUrl = SaveFile(docFile,
+                    @"C:\inetpub\wwwroot\SupervisorLogins\uploads\generatedSalary\",
+                    "uploads/generatedSalary/");
+
+                // 🔹 Update document in App.GeneratedSalary
+                using (SqlConnection conn = new SqlConnection(constr))
+                {
+                    conn.Open();
+
+                    string query = @"
+                UPDATE App.GeneratedSalary
+                SET generated_PDF = @SalaryDocUrl
+                WHERE Emp_ID = @Emp_ID AND Month = @Month AND Year = @Year;
+            ";
+
+                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@Emp_ID", empId);
+                        cmd.Parameters.AddWithValue("@Month", month);
+                        cmd.Parameters.AddWithValue("@Year", year);
+                        cmd.Parameters.AddWithValue("@SalaryDocUrl", docUrl);
+
+                        int rowsAffected = cmd.ExecuteNonQuery();
+
+                        if (rowsAffected > 0)
+                        {
+                            return Ok(new
+                            {
+                                message = "✅ Salary document updated successfully.",
+                                salaryDocUrl = docUrl
+                            });
+                        }
+                        else
+                        {
+                            return BadRequest("❌ No matching record found for the given Emp_ID, Month, and Year.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(new Exception("❌ Error while updating salary document: " + ex.Message));
+            }
+        }
+
+        private string SaveFile(HttpPostedFile file, string physicalFolder, string virtualFolder)
+        {
+            try
+            {
+                if (!Directory.Exists(physicalFolder))
+                    Directory.CreateDirectory(physicalFolder);
+
+                string fileName = Guid.NewGuid() + Path.GetExtension(file.FileName);
+                string filePath = Path.Combine(physicalFolder, fileName);
+                file.SaveAs(filePath);
+
+                string baseUrl = "https://admin.urest.in:8097/";
+                string fileUrl = $"{baseUrl}{virtualFolder}{fileName}".Replace("\\", "/");
+                return fileUrl;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("File save error: " + ex.Message);
+            }
+        }
+
+
 
         [HttpGet]
         [Route("api/employee/ungeneratedSalary/{officeId}/{month}/{year}")]

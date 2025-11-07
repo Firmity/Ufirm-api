@@ -3,63 +3,183 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Data.Entity.Core.Metadata.Edm;
 using System.Data.SqlClient;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Threading.Tasks;
 using System.Web.Http;
-using System.Xml.Linq;
 using UrestComplaintWebApi.Models;
+
 namespace UrestComplaintWebApi.Controllers
 {
     [RoutePrefix("api/sms")]
     public class SMSController : ApiController
     {
         private readonly string constr = ConfigurationManager.ConnectionStrings["adoConnectionstring"].ConnectionString;
-        Integrations integrations = new Integrations();
+        private readonly Integrations integrations = new Integrations();
 
+        // ✅ Centralized DLT Templates Configuration
+        private readonly Dictionary<string, (string senderId, string templateId)> SmsTemplates =
+            new Dictionary<string, (string, string)>()
+            {
+                { "URESTOTP", ("URSTOP", "201973") },
+                { "COMPLAINT_NOTIFICATION", ("URSTCP", "201980") },
+                { "ASSET_SERVICE_ALERT", ("SRVNOT", "201982") },
+                { "VISITOR_NOTIFICATION_SMS_LINK", ("VISMGT", "201983") },
+                { "GAURD_VISITOR_REJECTION", ("VISMGT", "201984") },
+                { "GAURD_VISITOR_APPROVAL", ("VISMGT", "201985") },
+                { "COMPLAINT_NOTIFICATION_FM", ("URSTCP", "201986") }
+            };
+
+        // ✅ Ticket Intimation Notification
         [HttpPost]
         [Route("TicketIntimation")]
-
         public async Task<IHttpActionResult> TicketIntimation([FromBody] TicketIntimationRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.TicketId))
-            {
-                return BadRequest("TicketId, PropertyId are required.");
-            }
+                return BadRequest("TicketId and PropertyId are required.");
+
             try
             {
-                string senderName = "URSTCP";
-                string smsMessage = $"A ticket {request.TicketId} has been raised and needs to be attended shortly.\n-Team Urest\nUFIRM TECHNOLOGIES PVT LTD";
-                List<string> mobileNumbers = await GetMobileNumbersFromDatabase(request.PropertyId, request.SupervisorId);
+                var template = SmsTemplates["COMPLAINT_NOTIFICATION"];
+                string smsVariables = request.TicketId;
+                var mobileNumbers = await GetMobileNumbersFromDatabase(request.PropertyId, request.SupervisorId);
 
                 if (mobileNumbers == null || mobileNumbers.Count == 0)
+                    return BadRequest("No mobile numbers found for the given PropertyId or Supervisor Id.");
+
+                foreach (var mobile in mobileNumbers)
                 {
-                    return BadRequest("Mobile numbers not found for the given PropertyId or Supervisor Id.");
+                    bool sent = await integrations.SendDLTSMSAsync(mobile, template.templateId, template.senderId, smsVariables);
+                    if (!sent)
+                        return InternalServerError(new Exception($"Failed to send SMS to {mobile}."));
                 }
 
-                foreach (string mobileNumber in mobileNumbers)
-                {
-                    bool smsSent = await integrations.SendSMSAsync(mobileNumber, smsMessage, senderName);
-
-                    if (!smsSent)
-                    {
-                        return InternalServerError(new Exception($"Failed to send SMS to {mobileNumber}."));
-                    }
-                }
-                return Ok("SMS messages sent successfully to all numbers: " + string.Join(", ", mobileNumbers));
+                return Ok("✅ Ticket intimation sent successfully.");
             }
             catch (Exception ex)
             {
-                // Log the exception
-                System.Diagnostics.Debug.WriteLine($"Error sending SMS: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}");
                 return InternalServerError(ex);
             }
         }
 
-        private async Task<List<string>> GetMobileNumbersFromDatabase(string propertyId, string supId)
+        // ✅ Visitor Notification
+        [HttpPost]
+        [Route("VisitorNotification")]
+        public async Task<IHttpActionResult> VisitorNotification([FromBody] VisitorNotificationRequest request)
         {
+            if (request == null || string.IsNullOrEmpty(request.MobileNo)
+                || string.IsNullOrEmpty(request.Name) || string.IsNullOrEmpty(request.VisitorName))
+                return BadRequest("MobileNo, Name, and VisitorName are required.");
+
+            try
+            {
+                var template = SmsTemplates["VISITOR_NOTIFICATION_SMS_LINK"];
+                string detailsLink = request.Details.StartsWith("https", StringComparison.OrdinalIgnoreCase)
+                    ? request.Details
+                    : $"https://rebrand.ly/fu?I={request.Details}";
+
+                string variables = $"{request.Name}|{request.VisitorName}|{detailsLink}";
+                bool sent = await integrations.SendDLTSMSAsync(request.MobileNo, template.templateId, template.senderId, variables);
+
+                if (!sent)
+                    return InternalServerError(new Exception($"Failed to send SMS to {request.MobileNo}."));
+
+                return Ok("✅ Visitor notification sent successfully.");
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        // ✅ Visitor Approval
+        [HttpPost]
+        [Route("VisitorApprovalNotification")]
+        public async Task<IHttpActionResult> VisitorApprovalNotification([FromBody] VisitorApprovalRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.MobileNo)
+                || string.IsNullOrEmpty(request.VisitorName) || string.IsNullOrEmpty(request.ApprovedBy))
+                return BadRequest("MobileNo, VisitorName, and ApprovedBy are required.");
+
+            try
+            {
+                var template = SmsTemplates["GAURD_VISITOR_APPROVAL"];
+                string variables = $"{request.VisitorName}|{request.ApprovedBy}";
+                bool sent = await integrations.SendDLTSMSAsync(request.MobileNo, template.templateId, template.senderId, variables);
+
+                if (!sent)
+                {
+                    return Content(HttpStatusCode.InternalServerError, new
+                    {
+                        Message = "SMS send failed.",
+                        Mobile = request.MobileNo,
+                        Variables = variables,
+                        Template = template.templateId,
+                        Sender = template.senderId
+                    });
+                }
+
+                return Ok("✅ Visitor approval notification sent successfully.");
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        // ✅ Visitor Rejection
+        [HttpPost]
+        [Route("VisitorRejectionNotification")]
+        public async Task<IHttpActionResult> VisitorRejectionNotification([FromBody] VisitorApprovalRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.MobileNo)
+                || string.IsNullOrEmpty(request.VisitorName) || string.IsNullOrEmpty(request.ApprovedBy))
+                return BadRequest("MobileNo, VisitorName, and ApprovedBy are required.");
+
+            try
+            {
+                var template = SmsTemplates["GAURD_VISITOR_REJECTION"];
+                string variables = $"{request.VisitorName}|{request.ApprovedBy}";
+                bool sent = await integrations.SendDLTSMSAsync(request.MobileNo, template.templateId, template.senderId, variables);
+
+                if (!sent)
+                    return InternalServerError(new Exception($"Failed to send SMS to {request.MobileNo}."));
+
+                return Ok("✅ Visitor rejection notification sent successfully.");
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        // ✅ Asset Service Notification
+        [HttpPost]
+        [Route("AssetServiceNotification")]
+        public async Task<IHttpActionResult> AssetServiceNotification([FromBody] AssetServiceRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(request.propertyId))
+                return BadRequest("PropertyId is required.");
+
+            var template = SmsTemplates["ASSET_SERVICE_ALERT"];
+            var contacts = await GetMobileNumbersFromDatabases(request.propertyId);
+
+            if (contacts == null || contacts.Count == 0)
+                return BadRequest("No valid users found for the given PropertyId.");
+
+            foreach (var user in contacts)
+            {
+                string variables = $"{user.Name}|{request.ItemDetails}";
+                bool sent = await integrations.SendDLTSMSAsync(user.MobileNumber, template.templateId, template.senderId, variables);
+                if (!sent)
+                    return InternalServerError(new Exception($"Failed to send SMS to {user.MobileNumber}."));
+            }
+
+            return Ok("✅ Asset service notifications sent successfully.");
+        }
+        private async Task<List<string>> GetMobileNumbersFromDatabase(string propertyId, string supId) { 
             List<string> mobileNumbers = new List<string>();
 
             try
@@ -93,9 +213,9 @@ namespace UrestComplaintWebApi.Controllers
                         }
                     }
                     else
-                    {
-                        // First Query (based on propertyId)
-                        string query1 = @"
+{
+    // First Query (based on propertyId)
+    string query1 = @"
                     SELECT ContactNumber
                     FROM [Identity].Users u
                     LEFT JOIN [Identity].UserRoleMapping ur ON u.UserId = ur.UserId
@@ -104,323 +224,76 @@ namespace UrestComplaintWebApi.Controllers
                       AND ur.RoleId = 5
                       AND upa.PropertyId = @PropertyId;";
 
-                        using (SqlCommand command1 = new SqlCommand(query1, connection))
-                        {
-                            command1.Parameters.AddWithValue("@PropertyId", propertyId);
+    using (SqlCommand command1 = new SqlCommand(query1, connection))
+    {
+        command1.Parameters.AddWithValue("@PropertyId", propertyId);
 
-                            using (SqlDataReader reader1 = await command1.ExecuteReaderAsync())
-                            {
-                                while (await reader1.ReadAsync())
-                                {
-                                    mobileNumbers.Add(reader1["ContactNumber"].ToString());
-                                }
-                            }
-                        }
+        using (SqlDataReader reader1 = await command1.ExecuteReaderAsync())
+        {
+            while (await reader1.ReadAsync())
+            {
+                mobileNumbers.Add(reader1["ContactNumber"].ToString());
+            }
+        }
+    }
 
-                        // Optionally, run second query if supId is provided
-                        if (!string.IsNullOrEmpty(supId))
-                        {
-                            string query2 = @"
+    // Optionally, run second query if supId is provided
+    if (!string.IsNullOrEmpty(supId))
+    {
+        string query2 = @"
                         SELECT MobileNumber
                         FROM app.FacilityMember
                         WHERE FacilityMemberId = @SupId;";
 
-                            using (SqlCommand command2 = new SqlCommand(query2, connection))
-                            {
-                                command2.Parameters.AddWithValue("@SupId", supId);
+        using (SqlCommand command2 = new SqlCommand(query2, connection))
+        {
+            command2.Parameters.AddWithValue("@SupId", supId);
 
-                                using (SqlDataReader reader2 = await command2.ExecuteReaderAsync())
-                                {
-                                    if (await reader2.ReadAsync())
-                                    {
-                                        mobileNumbers.Add(reader2["MobileNumber"].ToString());
-                                    }
-                                }
-                            }
-                        }
-                    }
+            using (SqlDataReader reader2 = await command2.ExecuteReaderAsync())
+            {
+                if (await reader2.ReadAsync())
+                {
+                    mobileNumbers.Add(reader2["MobileNumber"].ToString());
+                }
+            }
+        }
+    }
+}
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error retrieving mobile numbers: {ex.Message}");
-                return null;
+return null;
             }
 
             return mobileNumbers;
         }
 
-        [HttpPost]
-        [Route("VisitorNotification")]
-        public async Task<IHttpActionResult> VisitorNotification([FromBody] VisitorNotificationRequest request)
-        { // ✅ Step 1: Validate Input
-            if (request == null || string.IsNullOrEmpty(request.MobileNo) || string.IsNullOrEmpty(request.Name) || string.IsNullOrEmpty(request.VisitorName) || string.IsNullOrEmpty(request.Details))
-            {
-                return BadRequest("MobileNo, Name, VisitorName, and Details are required.");
-            }
-            try
-            { // ✅ Step 2: Define DLT Sender ID
-                string senderName = "VISMGT"; // Must match your DLT-approved Sender ID // ✅ Step 3: Prepare Link
-                string baseUrl = "https://rebrand.ly/fu";
-                string detailsLink = request.Details; // If user passed only numeric ID, append the base URL
-                if (!request.Details.StartsWith("https", StringComparison.OrdinalIgnoreCase))
-                {
-                    detailsLink = $"{baseUrl}?I={request.Details}";
-                } // ✅ Step 4: Construct Message // DLT Template: "Hello {#var#}, visitor {#var#} has come. Approve visitor entry link {#var#}. - Urest UFIRM TECH"
-                string smsMessage = $"Hello {request.Name}, visitor {request.VisitorName} has come. Approve visitor entry link {detailsLink}. - Urest UFIRM TECH"; // ✅ Step 5: Send SMS
-                bool smsSent = await integrations.SendSMSAsync(request.MobileNo, smsMessage, senderName);
-                if (!smsSent)
-                {
-                    System.Diagnostics.Debug.WriteLine($"❌ Failed to send SMS to {request.MobileNo}");
-                    return Content(HttpStatusCode.InternalServerError, new { Message = $"Failed to send SMS to {request.MobileNo}.", SMSContent = smsMessage });
-                } // ✅ Step 6: Log Success
-                System.Diagnostics.Debug.WriteLine($"✅ SMS sent successfully to {request.MobileNo}: {smsMessage}"); // ✅ Step 7: Return Response
-                return Ok(new { Message = "Visitor notification sent successfully.", MobileNo = request.MobileNo, VisitorName = request.VisitorName, LinkUsed = detailsLink, SMSContent = smsMessage });
-            }
-            catch (Exception ex)
-            { // ✅ Step 8: Exception Handling
-                System.Diagnostics.Debug.WriteLine($"🔥 Error in VisitorNotification: {ex.Message}");
-                return Content(HttpStatusCode.InternalServerError, new { Message = "An unexpected error occurred while sending the visitor notification.", Error = ex.Message });
-            }
-        }
-
-
-        [HttpPost]
-        [Route("VisitorApprovalNotification")]
-        public async Task<IHttpActionResult> VisitorApprovalNotification([FromBody] VisitorApprovalRequest request)
-        {
-            if (request == null || string.IsNullOrEmpty(request.MobileNo)
-                || string.IsNullOrEmpty(request.VisitorName) || string.IsNullOrEmpty(request.ApprovedBy))
-            {
-                return BadRequest("MobileNo, VisitorName, and ApprovedBy are required.");
-            }
-
-            try
-            {
-                string senderName = "VISMGT"; // DLT-approved sender ID
-
-                // ✅ DLT Template Format
-                string smsMessage = $"Visitor {request.VisitorName} approved by {request.ApprovedBy}. Allow entry. - Urest UFIRM Tech";
-
-                // Replace template variables with actual values
-
-
-                // Send SMS
-                bool smsSent = await integrations.SendSMSAsync(request.MobileNo, smsMessage, senderName);
-
-                if (!smsSent)
-                    return InternalServerError(new Exception($"Failed to send SMS to {request.MobileNo}."));
-
-                return Ok(new
-                {
-                    Message = "Visitor approval notification sent successfully.",
-                    MobileNo = request.MobileNo,
-                    SMSContent = smsMessage
-                });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in VisitorApprovalNotification: {ex.Message}");
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    Message = "An unexpected error occurred while sending the visitor approval notification.",
-                    Error = ex.Message
-                });
-            }
-        }
-
-        [HttpPost]
-        [Route("VisitorRejectionsNotification")]
-        public async Task<IHttpActionResult> VisitorRejectionNotification([FromBody] VisitorApprovalRequest request)
-        {
-            if (request == null || string.IsNullOrEmpty(request.MobileNo)
-                || string.IsNullOrEmpty(request.VisitorName) || string.IsNullOrEmpty(request.ApprovedBy))
-            {
-                return BadRequest("MobileNo, VisitorName, and ApprovedBy are required.");
-            }
-
-            try
-            {
-                string senderName = "VISMGT"; // DLT-approved sender ID
-
-                // ✅ DLT Template Format
-                string smsMessage = $"Visitor {request.VisitorName} rejected by {request.ApprovedBy}. Deny entry. - Urest UFIRM Tech";
-
-                // Replace template variables with actual values
-
-
-                // Send SMS
-                bool smsSent = await integrations.SendSMSAsync(request.MobileNo, smsMessage, senderName);
-
-                if (!smsSent)
-                    return InternalServerError(new Exception($"Failed to send SMS to {request.MobileNo}."));
-
-                return Ok(new
-                {
-                    Message = "Visitor approval notification sent successfully.",
-                    MobileNo = request.MobileNo,
-                    SMSContent = smsMessage
-                });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in VisitorApprovalNotification: {ex.Message}");
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    Message = "An unexpected error occurred while sending the visitor approval notification.",
-                    Error = ex.Message
-                });
-            }
-        }
-
-        [HttpPost]
-        [Route("AssetServiceNotification")]
-        public async Task<IHttpActionResult> AssetServiceNotification([FromBody] AssetServiceRequest request)
-        {
-
-                string senderName = "SRVNOT"; // DLT-approved sender ID
-
-                // ✅ DLT Template Format
-                var userContacts = await GetMobileNumbersFromDatabases(request.propertyId);
-
-                if (userContacts == null || userContacts.Count == 0)
-                {
-                    return BadRequest("No valid users found for the given PropertyId.");
-                }
-
-                foreach (var user in userContacts)
-                {
-                    string personalizedMessage = $"Hello {user.Name}, your {request.ItemDetails} requires servicing. Team Urest UFIRM TECHNOLOGIES PVT LTD";
-                    bool smsSent = await integrations.SendSMSAsync(user.MobileNumber, personalizedMessage, senderName);
-
-                    if (!smsSent)
-                    {
-                        return InternalServerError(new Exception($"Failed to send SMS to {user.MobileNumber}."));
-                    }
-                }
-
-                return Ok("SMS messages sent successfully to: " +
-                          string.Join(", ", userContacts.Select(u => $"{u.Name} ({u.MobileNumber})")));
-            }
-
-        [HttpGet]
-        [Route("api/Asset/ScheduleServiceReminder")]
-        public IHttpActionResult ScheduleServiceReminder()
-        {
-            try
-            {
-                using (var connection = new SqlConnection(constr))
-                {
-                    connection.Open();
-
-                    // Select assets with service due or upcoming in next 7 days
-                    string query = @"
-                SELECT A.Id, A.Name, A.NextServiceDate, A.PropertyId,A.LastServiceDate
-                FROM AssetMaster A
-                WHERE 
-                    A.NextServiceDate IS NOT NULL
-                    AND A.NextServiceDate <= DATEADD(day, 7, GETDATE())";
-
-                    using (var command = new SqlCommand(query, connection))
-                    using (var reader = command.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            string propertyId = reader["PropertyId"].ToString();
-                            string assetName = reader["Name"].ToString();
-                            DateTime nextServiceDate = Convert.ToDateTime(reader["NextServiceDate"]);
-                            DateTime lastServiceDate = Convert.ToDateTime(reader["LastServiceDate"]);
-                            string itemDetails = "";
-
-                            if (nextServiceDate < DateTime.Now.Date)
-                            {
-                                itemDetails = $"{assetName} Overdue on {lastServiceDate:dd-MMM-yyyy}";
-                            }
-                            else
-                            {
-                                itemDetails = $"{assetName} Upcoming on {nextServiceDate:dd-MMM-yyyy}";
-                            }
-
-                            // Call your SMS API
-                            SendSmsApi(propertyId, itemDetails);
-                        }
-                    }
-                }
-
-                return Ok("✅ SMS reminder job executed successfully.");
-            }
-            catch (Exception ex)
-            {
-                return InternalServerError(ex);
-            }
-        }
-        private void SendSmsApi(string propertyId, string itemDetails)
-        {
-            try
-            {
-                var payload = new
-                {
-                    propertyId = propertyId,
-                    ItemDetails = itemDetails
-                };
-
-                string json = Newtonsoft.Json.JsonConvert.SerializeObject(payload);
-
-                using (var client = new WebClient())
-                {
-                    client.Headers[HttpRequestHeader.ContentType] = "application/json";
-
-                    string smsApiUrl = "https://api.urest.in:8096/api/sms/AssetServiceNotification"; // check this
-
-                    string response = client.UploadString(smsApiUrl, "POST", json);
-                    System.Diagnostics.Debug.WriteLine("✅ SMS API response: " + response);
-                }
-            }
-            catch (WebException ex)
-            {
-                using (var reader = new StreamReader(ex.Response.GetResponseStream()))
-                {
-                    string responseText = reader.ReadToEnd();
-                    throw new Exception($"SMS API error: {ex.Message}\nResponse: {responseText}");
-                }
-            }
-        }
-
+        // ✅ FM Complaint Notification
         [HttpPost]
         [Route("FMComplaintNotification")]
         public async Task<IHttpActionResult> FMComplaintNotification([FromBody] TicketIntimationRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.TicketId) || string.IsNullOrEmpty(request.PropertyId))
-            {
                 return BadRequest("TicketId and PropertyId are required.");
-            }
 
             try
             {
-                string senderName = "URSTCP"; // DLT-approved sender ID
-
-                // ✅ Fetch all user contacts (Name + MobileNumber)
-                List<UserContact> contacts = await GetMobileNumbersFromDatabases(request.PropertyId);
+                var template = SmsTemplates["COMPLAINT_NOTIFICATION_FM"];
+                var contacts = await GetMobileNumbersFromDatabases(request.PropertyId);
 
                 if (contacts == null || contacts.Count == 0)
-                {
-                    return BadRequest("No valid contacts found for the given PropertyId.");
-                }
+                    return BadRequest("No valid contacts found.");
 
-                // ✅ Create all SMS send tasks concurrently
                 var smsTasks = contacts.Select(async contact =>
                 {
-                    string personalizedMessage =
-                        $"A Ticket {request.TicketId} has been resolved. Please close the ticket. -Team Urest UFIRM TECH";
-
-                    bool sent = await integrations.SendSMSAsync(contact.MobileNumber, personalizedMessage, senderName);
+                    string variables = $"{contact.Name}|{request.TicketId}";
+                    bool sent = await integrations.SendDLTSMSAsync(contact.MobileNumber, template.templateId, template.senderId, variables);
                     return new { contact.Name, contact.MobileNumber, Sent = sent };
                 }).ToList();
 
-                // Wait for all to complete
                 var results = await Task.WhenAll(smsTasks);
-
-                // Check if any failed
                 var failed = results.Where(r => !r.Sent).ToList();
 
                 if (failed.Any())
@@ -432,24 +305,15 @@ namespace UrestComplaintWebApi.Controllers
                     });
                 }
 
-                // ✅ All successful
-                return Ok(new
-                {
-                    Message = "SMS messages sent successfully to all recipients.",
-                    Recipients = results.Select(r => $"{r.Name} ({r.MobileNumber})")
-                });
+                return Ok("✅ FM Complaint notifications sent successfully.");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"❌ Error sending FM Complaint SMS: {ex.Message}");
-                return Content(HttpStatusCode.InternalServerError, new
-                {
-                    Message = "An error occurred while sending FM Complaint notifications.",
-                    Error = ex.Message
-                });
+                return InternalServerError(ex);
             }
         }
 
+        // ------------------------- Helper Methods -------------------------
 
         private async Task<List<UserContact>> GetMobileNumbersFromDatabases(string propertyId)
         {
@@ -488,32 +352,33 @@ u.FirstName,
                     {
                         command.Parameters.AddWithValue("@PropertyId", propertyId);
                         using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
                         {
-                            var number = reader["ContactNumber"]?.ToString();
-                            var name = reader["FirstName"]?.ToString();
-
-                            if (!string.IsNullOrWhiteSpace(number))
+                            while (await reader.ReadAsync())
                             {
-                                userContacts.Add(new UserContact
+                                var number = reader["ContactNumber"]?.ToString();
+                                var name = reader["FirstName"]?.ToString();
+
+                                if (!string.IsNullOrWhiteSpace(number))
                                 {
-                                    Name = name ?? "User",
-                                    MobileNumber = number
-                                });
+                                    userContacts.Add(new UserContact
+                                    {
+                                        Name = name ?? "User",
+                                        MobileNumber = number
+                                    });
+                                }
                             }
                         }
                     }
                 }
             }
-    }
-    catch (Exception ex)
-    {
-        System.Diagnostics.Debug.WriteLine($"❌ Error retrieving mobile numbers: {ex.Message}");
-    }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"❌ Error retrieving mobile numbers: {ex.Message}");
+            }
 
-    return userContacts;
+            return userContacts;
         }
+
     }
 
 }

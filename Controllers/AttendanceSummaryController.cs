@@ -151,24 +151,63 @@ namespace UrestComplaintWebApi.Controllers
         // SOFT DELETE ATTENDANCE RECORD
         // ---------------------------
         [HttpDelete]
-        [Route("{empId:int}")]
-        public async Task<IHttpActionResult> SoftDeleteAttendance(int empId)
+        [Route("delete-multiple")]
+        public async Task<IHttpActionResult> SoftDeleteMultipleByEmpIds(string empIds, string monthyear)
         {
+            if (string.IsNullOrWhiteSpace(empIds) || string.IsNullOrWhiteSpace(monthyear))
+                return BadRequest("EmpIDs and monthyear are required.");
+
+            // Split comma-separated IDs into a list of integers
+            var empIdList = new List<int>();
+            foreach (var id in empIds.Split(','))
+            {
+                if (int.TryParse(id.Trim(), out int empId))
+                    empIdList.Add(empId);
+            }
+
+            if (empIdList.Count == 0)
+                return BadRequest("No valid EmpIDs provided.");
+
+            int totalUpdated = 0;
+
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
 
-                using (var cmd = new SqlCommand("UPDATE App.AttendanceSummary SET is_active=0 WHERE EmpID=@EmpID", conn))
-                {
-                    cmd.Parameters.AddWithValue("@EmpID", empId);
-                    int rows = await cmd.ExecuteNonQueryAsync();
+                // Build a dynamic SQL IN clause safely
+                var parameters = new List<string>();
+                for (int i = 0; i < empIdList.Count; i++)
+                    parameters.Add($"@EmpID{i}");
 
-                    if (rows == 0) return NotFound();
+                var query = $@"
+            UPDATE App.AttendanceSummary
+            SET is_active = 0
+            WHERE EmpID IN ({string.Join(",", parameters)})
+              AND monthyear = @monthyear
+              AND is_active = 1;
+        ";
+
+                using (var cmd = new SqlCommand(query, conn))
+                {
+                    for (int i = 0; i < empIdList.Count; i++)
+                        cmd.Parameters.AddWithValue($"@EmpID{i}", empIdList[i]);
+
+                    cmd.Parameters.AddWithValue("@monthyear", monthyear);
+
+                    totalUpdated = await cmd.ExecuteNonQueryAsync();
                 }
             }
 
-            return Ok(new { message = "Attendance record soft-deleted successfully" });
+            if (totalUpdated == 0)
+                return NotFound();
+
+            return Ok(new
+            {
+                message = "Selected attendance records soft-deleted successfully",
+                deletedCount = totalUpdated
+            });
         }
+
 
         // ---------------------------
         // HELPER: MAP SQL DATA TO DTO

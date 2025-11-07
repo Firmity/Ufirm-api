@@ -1,41 +1,47 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
-using System.Collections.Generic;
 using System.Configuration;
-using System.Data.SqlClient;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using System.Web;
 
 namespace UrestComplaintWebApi
 {
     public class Integrations
     {
-        //private string smsUrl = ConfigurationManager.AppSettings.Keys[4].  //"https://api.textlocal.in/send/?"; //Startup.Configuration.GetSection("SMSInfo").GetSection("Url").Value.ToString();
-        //private string Key = ConfigurationManager.AppSettings.Keys[5].ToString();  //"NGY0ODY4NDQ3MDRlMzU0ZjU4NDg0MTY4NTQ0NTc0NjM="; //Startup.Configuration.GetSection("SMSInfo").GetSection("Key").Value.ToString();
-        //private string Sender = ConfigurationManager.AppSettings.Keys[6].ToString();  //"URSTIN";// Startup.Configuration.GetSection("SMSInfo").GetSection("Sender").Value.ToString();
+        // Replace TextLocal with Fast2SMS API
+        private readonly string Fast2SmsUrl = "https://www.fast2sms.com/dev/bulkV2";
+        private readonly string Fast2SmsApiKey = "AhtI9lxsgiB1pKHRS2r5qCMbjmdk6WDO8G4zF7fo3uvJEZYULPC3fP1ZYsN264nzlbSoM0jqxFHLypiQ"; // 🔒 Replace with your actual API key
+        private readonly string DltSenderId = "URSTOP";             // 🔒 Replace with your DLT Sender ID
+        private readonly string DltTemplateId = "201973";        // 🔒 Replace with your approved DLT Template ID
 
-        private string Url = "https://api.textlocal.in/send/?"; //Startup.Configuration.GetSection("SMSInfo").GetSection("Url").Value.ToString();
-        private string Key = "NGY0ODY4NDQ3MDRlMzU0ZjU4NDg0MTY4NTQ0NTc0NjM="; //Startup.Configuration.GetSection("SMSInfo").GetSection("Key").Value.ToString();
-        private string Sender = "URSTCP";
-        private string Key1 = "MzU3ODQ4Nzg3OTQ1NTMzNjYyNjU2OTVhNjE2NTU1NmI=";
-       
-        private readonly string templateId = "1207175852624032420";
+        // -------------------- OTP Function --------------------
 
-        public async Task<string> SendOTP(string ComplainBy, int Length)
+        public async Task<string> SendOTP(string mobileNo, int length)
         {
             string response = "Success";
             try
             {
-                string otp = GenerateOTP(Length);
-                string clientSMS = "Your OTP to access Urest facility management dashboard is " + otp;
-                bool smsst = await SendSMS(ComplainBy, clientSMS);
+                string otp = GenerateOTP(length);
 
-                response = otp;
+                // ✅ Match template variables:
+                // Template: "Your OTP to {#var#} is {#var#}."
+                string variableValues = $"Urest Dashboard|{otp}";
+
+                bool smsSent = await SendDLTSMSAsync(
+                    mobileNo,
+                    DltTemplateId,   // Template ID
+                    DltSenderId,     // Sender ID
+                    variableValues   // Template variables separated by '|'
+                );
+
+                if (!smsSent)
+                    response = "Failed to send SMS";
+                else
+                    response = otp;
             }
             catch (Exception ex)
             {
@@ -44,167 +50,84 @@ namespace UrestComplaintWebApi
             return response;
         }
 
-        private async Task<bool> SendSMS(string mobileNo, string message)
-        {
-            bool st = false;
-            string finalUrl = "";
+        // -------------------- DLT SMS Sender --------------------
 
-            await Task.Run(() =>
+        public async Task<bool> SendDLTSMSAsync(
+      string mobileNo,
+      string templateId,
+      string senderId,
+      string variableValues,
+      int flash = 0)
+        {
+            bool isSuccess = false;
+
+            try
             {
-                if (!string.IsNullOrEmpty(mobileNo) && !string.IsNullOrEmpty(Url) && !string.IsNullOrEmpty(Key) && !string.IsNullOrEmpty(Sender))
+                if (string.IsNullOrEmpty(mobileNo) ||
+                    string.IsNullOrEmpty(templateId) ||
+                    string.IsNullOrEmpty(senderId))
+                    throw new ArgumentException("Missing required parameters.");
+
+                using (var client = new HttpClient())
                 {
-                    finalUrl = $"{Url}apikey={Key}&sender={Sender}&numbers=91{mobileNo}&message={message}";
-                }
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(finalUrl);
-                HttpWebResponse response = (HttpWebResponse)request.GetResponse();
-                Stream stream = response.GetResponseStream();
-                StreamReader reader = new StreamReader(stream);
-                string res = reader.ReadToEnd();
-                dynamic stuff = Newtonsoft.Json.JsonConvert.DeserializeObject(res);
-                if (stuff != null)
-                {
-                    if (stuff.status == "success")
+                    client.DefaultRequestHeaders.Add("authorization", Fast2SmsApiKey);
+
+                    var payload = new
                     {
-                        st = true;
+                        route = "dlt",
+                        sender_id = senderId,
+                        message = templateId,
+                        variables_values = variableValues,
+                        flash = flash,
+                        numbers = mobileNo
+                    };
+
+                    var jsonPayload = JsonConvert.SerializeObject(payload);
+                    var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+                    var response = await client.PostAsync(Fast2SmsUrl, content);
+                    var responseString = await response.Content.ReadAsStringAsync();
+
+                    Console.WriteLine("📤 Fast2SMS Request: " + jsonPayload);
+                    Console.WriteLine("📥 Fast2SMS Response: " + responseString);
+
+                    dynamic resJson = JsonConvert.DeserializeObject(responseString);
+                    if (resJson != null && resJson.@return == true)
+                    {
+                        isSuccess = true;
+                        Console.WriteLine("✅ SMS sent successfully.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("❌ Fast2SMS Error: " + (resJson?.message ?? "Unknown error"));
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"🚨 Exception in SendDLTSMSAsync: {ex.Message}");
+            }
 
-            });
-
-            
-            return st;
+            return isSuccess;
         }
 
-        private string GenerateOTP(int Length)
+
+
+
+        // -------------------- OTP Generator --------------------
+
+        private string GenerateOTP(int length)
         {
-            string[] saAllowedCharacters = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "0" };
-
-            return GenerateRandomOTP(Length, saAllowedCharacters);
-        }
-
-        private string GenerateRandomOTP(int iOTPLength, string[] saAllowedCharacters)
-        {
-            string sOTP = String.Empty;
-            string sTempChars = String.Empty;
-
+            string[] digits = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
             Random rand = new Random();
-            for (int i = 0; i < iOTPLength; i++)
+            string otp = "";
+
+            for (int i = 0; i < length; i++)
             {
-                int p = rand.Next(0, saAllowedCharacters.Length);
-                sTempChars = saAllowedCharacters[rand.Next(0, saAllowedCharacters.Length)];
-                sOTP += sTempChars;
+                otp += digits[rand.Next(0, digits.Length)];
             }
 
-            return sOTP;
+            return otp;
         }
-        public async Task<bool> SendTemplateSMSAsync(object payload)
-        {
-            bool isSuccess = false;
-
-            try
-            {
-                if (payload == null || string.IsNullOrEmpty(Url))
-                    throw new ArgumentException("Payload or API URL is missing.");
-
-                // Convert payload to JSON
-                string jsonPayload = Newtonsoft.Json.JsonConvert.SerializeObject(payload);
-
-                // Create HTTP request
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(Url);
-                request.Method = "POST";
-                request.ContentType = "application/json";
-                request.Timeout = 15000; // 15 seconds
-
-                using (var streamWriter = new StreamWriter(await request.GetRequestStreamAsync()))
-                {
-                    await streamWriter.WriteAsync(jsonPayload);
-                    await streamWriter.FlushAsync();
-                }
-
-                using (var response = (HttpWebResponse)await request.GetResponseAsync())
-                using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream))
-                {
-                    string result = await reader.ReadToEndAsync();
-                    dynamic responseJson = Newtonsoft.Json.JsonConvert.DeserializeObject(result);
-
-                    // TextLocal/Jio may return status, error, or message depending on API
-                    if (responseJson != null && responseJson.status == "success")
-                    {
-                        isSuccess = true;
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"DLT SMS API returned error: {result}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in SendTemplateSMSAsync: {ex.Message}");
-            }
-
-            return isSuccess;
-        }
-
-
-        public async Task<bool> SendSMSAsync(string mobileNo, string message, string sender)
-        {
-            bool isSuccess = false;
-
-            try
-            {
-                if (string.IsNullOrEmpty(mobileNo) || string.IsNullOrEmpty(message) ||
-                    string.IsNullOrEmpty(sender) || string.IsNullOrEmpty(Url) || string.IsNullOrEmpty(Key))
-                {
-                    throw new ArgumentException("Missing required SMS parameters.");
-                }
-                string apiKeyToUse = sender.Equals("VISMGT", StringComparison.OrdinalIgnoreCase)
-                   ? Key1
-                   : Key;
-
-                if (string.IsNullOrEmpty(apiKeyToUse))
-                {
-                    throw new ArgumentException("API key not configured for the given sender.");
-                }
-
-                // ✅ URL-encode the message for safety (spaces, special chars, links)
-                string encodedMessage = Uri.EscapeDataString(message);
-
-                // ✅ Build final URL
-                string finalUrl = $"{Url}apiKey={apiKeyToUse}&sender={sender}&numbers={mobileNo}&message={encodedMessage}";
-
-                // ✅ Send the HTTP request
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(finalUrl);
-                request.Method = "GET";
-                request.Timeout = 15000; // 15 seconds
-
-                using (var response = (HttpWebResponse)await request.GetResponseAsync())
-                using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream))
-                {
-                    string result = await reader.ReadToEndAsync();
-
-                    // ✅ Deserialize JSON response safely
-                    dynamic responseJson = Newtonsoft.Json.JsonConvert.DeserializeObject(result);
-
-                    if (responseJson != null && responseJson.status == "success")
-                    {
-                        isSuccess = true;
-                    }
-                    else
-                    {
-                        System.Diagnostics.Debug.WriteLine($"SMS API returned error: {result}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in SendSMSAsync: {ex.Message}");
-            }
-
-            return isSuccess;
-        }
-
     }
 }

@@ -101,7 +101,7 @@ namespace UrestComplaintWebApi.Models
 
     public class FacilityMemberCreateDto
     {
-        public int FacilityMemberId { get; set; }
+        public string FacilityMemberIds { get; set; }
         public int SalaryGroup_ID { get; set; }
         public int Taxamount { get; set; }
         public DateTime? EndDate { get; set; }

@@ -285,8 +285,14 @@ namespace UrestComplaintWebApi.Controllers
         [Route("assignSalaryGroup")]
         public async Task<IHttpActionResult> AssignSalaryGroup(FacilityMemberCreateDto dto)
         {
-            if (dto == null || dto.FacilityMemberId <= 0 || dto.SalaryGroup_ID <= 0)
-                return BadRequest("Invalid FacilityMemberId or SalaryGroup_ID");
+            if (dto == null || string.IsNullOrEmpty(dto.FacilityMemberIds) || dto.SalaryGroup_ID <= 0)
+                return BadRequest("Invalid FacilityMemberIds or SalaryGroup_ID");
+
+            // Convert comma-separated string to list of integers
+            var memberIds = dto.FacilityMemberIds
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(id => int.Parse(id.Trim()))
+                .ToList();
 
             using (var conn = new SqlConnection(constr))
             {
@@ -295,82 +301,81 @@ namespace UrestComplaintWebApi.Controllers
                 {
                     try
                     {
-                        // 1️⃣ Update FacilityMember
-                        var queryUpdate = @"
-                UPDATE app.FacilityMember 
-                SET SG_Link_ID = @SalaryGroup_ID, tax_amount = @tax_amount
-                WHERE FacilityMemberId = @FacilityMemberId";
-
-                        using (var cmd = new SqlCommand(queryUpdate, conn, transaction))
+                        foreach (var memberId in memberIds)
                         {
-                            cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = dto.FacilityMemberId;
-                            cmd.Parameters.Add("@SalaryGroup_ID", SqlDbType.Int).Value = dto.SalaryGroup_ID;
-                            cmd.Parameters.Add("@tax_amount", SqlDbType.Int).Value = dto.Taxamount;
-                            var rows = await cmd.ExecuteNonQueryAsync();
-                            if (rows == 0) return NotFound();
-                        }
+                            // 1️⃣ Update FacilityMember
+                            var queryUpdate = @"
+                    UPDATE app.FacilityMember 
+                    SET SG_Link_ID = @SalaryGroup_ID, tax_amount = @tax_amount
+                    WHERE FacilityMemberId = @FacilityMemberId";
 
-                        // 2️⃣ Check for existing active link (EndDate IS NULL)
-                        var checkExistingQuery = @"
-                SELECT TOP 1 LinkId, Start_date 
-                FROM SalaryGroupFacilityLinking
-                WHERE FacilityMemberId = @FacilityMemberId AND End_date IS NULL
-                ORDER BY Start_date DESC";
-
-                        int? existingLinkId = null;
-
-                        using (var cmd = new SqlCommand(checkExistingQuery, conn, transaction))
-                        {
-                            cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = dto.FacilityMemberId;
-                            using (var reader = await cmd.ExecuteReaderAsync())
+                            using (var cmd = new SqlCommand(queryUpdate, conn, transaction))
                             {
-                                if (await reader.ReadAsync())
+                                cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = memberId;
+                                cmd.Parameters.Add("@SalaryGroup_ID", SqlDbType.Int).Value = dto.SalaryGroup_ID;
+                                cmd.Parameters.Add("@tax_amount", SqlDbType.Int).Value = dto.Taxamount;
+                                await cmd.ExecuteNonQueryAsync();
+                            }
+
+                            // 2️⃣ Check for existing active link
+                            var checkExistingQuery = @"
+                    SELECT TOP 1 LinkId
+                    FROM SalaryGroupFacilityLinking
+                    WHERE FacilityMemberId = @FacilityMemberId AND End_date IS NULL
+                    ORDER BY Start_date DESC";
+
+                            int? existingLinkId = null;
+
+                            using (var cmd = new SqlCommand(checkExistingQuery, conn, transaction))
+                            {
+                                cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = memberId;
+                                using (var reader = await cmd.ExecuteReaderAsync())
                                 {
-                                    existingLinkId = reader.GetInt32(0);
+                                    if (await reader.ReadAsync())
+                                        existingLinkId = reader.GetInt32(0);
                                 }
                             }
-                        }
 
-                        DateTime startDate = DateTime.Now;
+                            DateTime startDate = DateTime.Now;
 
-                        // 3️⃣ If active record exists, update its EndDate
-                        if (existingLinkId.HasValue)
-                        {
-                            var updateOldLinkQuery = @"
-                    UPDATE SalaryGroupFacilityLinking
-                    SET End_date = @EndDate
-                    WHERE LinkId = @LinkId";
-
-                            using (var cmd = new SqlCommand(updateOldLinkQuery, conn, transaction))
+                            // 3️⃣ If active record exists, update its EndDate
+                            if (existingLinkId.HasValue)
                             {
-                                cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = startDate;
-                                cmd.Parameters.Add("@LinkId", SqlDbType.Int).Value = existingLinkId.Value;
+                                var updateOldLinkQuery = @"
+                        UPDATE SalaryGroupFacilityLinking
+                        SET End_date = @EndDate
+                        WHERE LinkId = @LinkId";
+
+                                using (var cmd = new SqlCommand(updateOldLinkQuery, conn, transaction))
+                                {
+                                    cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = startDate;
+                                    cmd.Parameters.Add("@LinkId", SqlDbType.Int).Value = existingLinkId.Value;
+                                    await cmd.ExecuteNonQueryAsync();
+                                }
+                            }
+
+                            // 4️⃣ Insert new SalaryGroupFacilityLinking record
+                            var queryInsertLink = @"
+                    INSERT INTO SalaryGroupFacilityLinking (FacilityMemberId, SalaryGroup_ID, Start_date, End_date)
+                    VALUES (@FacilityMemberId, @SalaryGroup_ID, @StartDate, @EndDate)";
+
+                            using (var cmd = new SqlCommand(queryInsertLink, conn, transaction))
+                            {
+                                cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = memberId;
+                                cmd.Parameters.Add("@SalaryGroup_ID", SqlDbType.Int).Value = dto.SalaryGroup_ID;
+                                cmd.Parameters.Add("@StartDate", SqlDbType.DateTime).Value = startDate;
+
+                                if (dto.EndDate.HasValue)
+                                    cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = dto.EndDate.Value;
+                                else
+                                    cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = DBNull.Value;
+
                                 await cmd.ExecuteNonQueryAsync();
                             }
                         }
 
-                        // 4️⃣ Insert new SalaryGroupFacilityLinking record
-                        var queryInsertLink = @"
-                INSERT INTO SalaryGroupFacilityLinking (FacilityMemberId, SalaryGroup_ID, Start_date, End_date)
-                VALUES (@FacilityMemberId, @SalaryGroup_ID, @StartDate, @EndDate)";
-
-                        using (var cmd = new SqlCommand(queryInsertLink, conn, transaction))
-                        {
-                            cmd.Parameters.Add("@FacilityMemberId", SqlDbType.Int).Value = dto.FacilityMemberId;
-                            cmd.Parameters.Add("@SalaryGroup_ID", SqlDbType.Int).Value = dto.SalaryGroup_ID;
-                            cmd.Parameters.Add("@StartDate", SqlDbType.DateTime).Value = startDate;
-
-                            // Use dto.EndDate if provided, else NULL for active
-                            if (dto.EndDate.HasValue)
-                                cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = dto.EndDate.Value;
-                            else
-                                cmd.Parameters.Add("@EndDate", SqlDbType.DateTime).Value = DBNull.Value;
-
-                            await cmd.ExecuteNonQueryAsync();
-                        }
-
                         transaction.Commit();
-                        return Ok(new { message = "Salary group assigned and linked successfully." });
+                        return Ok(new { message = "Salary group assigned successfully to all selected members." });
                     }
                     catch (Exception ex)
                     {
@@ -380,6 +385,7 @@ namespace UrestComplaintWebApi.Controllers
                 }
             }
         }
+
 
         // ---------------------------
         // GET BY FACILITY MEMBER (linked salary group)
