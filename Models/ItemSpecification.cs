@@ -6,6 +6,7 @@ namespace UrestComplaintWebApi.Models
     public class ItemSpecification
     {
         public int Id { get; set; }
+        public int ItemId { get; set; }
         public string Item_Name { get; set; }
         public string Gender { get; set; }
         public int Quantity { get; set; }

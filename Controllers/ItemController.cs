@@ -22,7 +22,7 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = "SELECT id, name, specification FROM app.itemmaster";
+                string query = "SELECT id,item_id, name, specification FROM app.itemmaster";
                 using (var cmd = new SqlCommand(query, conn))
                 using (var reader = await cmd.ExecuteReaderAsync())
                 {
@@ -31,6 +31,7 @@ namespace UrestComplaintWebApi.Controllers
                         list.Add(new Item
                         {
                             Id = Convert.ToInt32(reader["id"]),
+                            ItemId= Convert.ToInt32(reader["item_id"]),
                             Name = reader["name"].ToString(),
                             Specification = reader["specification"].ToString()
                         });
@@ -53,7 +54,7 @@ namespace UrestComplaintWebApi.Controllers
             {
                 await conn.OpenAsync();
                 string query = @"
-            SELECT id, name, specification 
+            SELECT id,item_id name, specification 
             FROM app.itemmaster 
             WHERE LOWER(name) LIKE LOWER('%' + @name + '%')
             ORDER BY name;";
@@ -69,6 +70,7 @@ namespace UrestComplaintWebApi.Controllers
                             items.Add(new Item
                             {
                                 Id = Convert.ToInt32(reader["id"]),
+                                ItemId = Convert.ToInt32(reader["item_id"]),
                                 Name = reader["name"].ToString(),
                                 Specification = reader["specification"].ToString()
                             });
@@ -94,14 +96,15 @@ namespace UrestComplaintWebApi.Controllers
             using (var conn = new SqlConnection(constr))
             {
                 await conn.OpenAsync();
-                string query = @"INSERT INTO app.itemmaster (name, specification) 
-                                 VALUES (@name, @specification);
+                string query = @"INSERT INTO app.itemmaster (name, specification,item_id) 
+                                 VALUES (@name, @specification,@item_id);
                                  SELECT SCOPE_IDENTITY();";
 
                 using (var cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@name", model.Name);
                     cmd.Parameters.AddWithValue("@specification", (object)model.Specification ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@item_id", (object)model.ItemId ?? DBNull.Value);
 
                     int newId = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                     return Ok(new { message = "Product added successfully", id = newId });

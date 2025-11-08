@@ -37,17 +37,19 @@ namespace UrestComplaintWebApi.Controllers
                         {
                             items.Add(new ItemSpecification
                             {
-                                Id = Convert.ToInt32(reader["id"]),
-                                Item_Name = reader["item_name"].ToString(),
-                                Gender = reader["gender"]?.ToString(),
-                                Quantity = Convert.ToInt32(reader["quantity"]),
-                                PropertyId = Convert.ToInt32(reader["propertyId"]),
-                                IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
-                                IsHandover = Convert.ToBoolean(reader["isHandover"]),
-                                Is_Active = Convert.ToBoolean(reader["is_active"]),
-                                Created_On = Convert.ToDateTime(reader["created_on"]),
-                                Updated_On = Convert.ToDateTime(reader["updated_on"])
+                                Id = reader["id"] != DBNull.Value ? Convert.ToInt32(reader["id"]) : 0,
+                                ItemId = reader["item_id"] != DBNull.Value ? Convert.ToInt32(reader["item_id"]) : 0,
+                                Item_Name = reader["item_name"] != DBNull.Value ? reader["item_name"].ToString() : null,
+                                Gender = reader["gender"] != DBNull.Value ? reader["gender"].ToString() : null,
+                                Quantity = reader["quantity"] != DBNull.Value ? Convert.ToInt32(reader["quantity"]) : 0,
+                                PropertyId = reader["propertyId"] != DBNull.Value ? Convert.ToInt32(reader["propertyId"]) : 0,
+                                IsRequisition = reader["isRequisition"] != DBNull.Value && Convert.ToBoolean(reader["isRequisition"]),
+                                IsHandover = reader["isHandover"] != DBNull.Value && Convert.ToBoolean(reader["isHandover"]),
+                                Is_Active = reader["is_active"] != DBNull.Value && Convert.ToBoolean(reader["is_active"]),
+                                Created_On = reader["created_on"] != DBNull.Value ? Convert.ToDateTime(reader["created_on"]) : DateTime.MinValue,
+                                Updated_On = reader["updated_on"] != DBNull.Value ? Convert.ToDateTime(reader["updated_on"]) : DateTime.MinValue
                             });
+
                         }
                     }
                 }
@@ -108,18 +110,19 @@ namespace UrestComplaintWebApi.Controllers
                         {
                             item = new ItemSpecification
                             {
-                                Id = Convert.ToInt32(reader["id"]),
-                                Item_Name = reader["item_name"].ToString(),
-                                Gender = reader["gender"]?.ToString(),
-                                Quantity = Convert.ToInt32(reader["quantity"]),
-                                PropertyId = Convert.ToInt32(reader["propertyId"]),
-                                IsRequisition = Convert.ToBoolean(reader["isRequisition"]),
-                                IsHandover = Convert.ToBoolean(reader["isHandover"]),
-                                Is_Active = Convert.ToBoolean(reader["is_active"]),
-                                Created_On = Convert.ToDateTime(reader["created_on"]),
-                                Updated_On = Convert.ToDateTime(reader["updated_on"]),
-                                Details = new List<ItemSpecificationDetail>()
+                                Id = reader["id"] != DBNull.Value ? Convert.ToInt32(reader["id"]) : 0,
+                                ItemId = reader["item_id"] != DBNull.Value ? Convert.ToInt32(reader["item_id"]) : 0,
+                                Item_Name = reader["item_name"] != DBNull.Value ? reader["item_name"].ToString() : null,
+                                Gender = reader["gender"] != DBNull.Value ? reader["gender"].ToString() : null,
+                                Quantity = reader["quantity"] != DBNull.Value ? Convert.ToInt32(reader["quantity"]) : 0,
+                                PropertyId = reader["propertyId"] != DBNull.Value ? Convert.ToInt32(reader["propertyId"]) : 0,
+                                IsRequisition = reader["isRequisition"] != DBNull.Value && Convert.ToBoolean(reader["isRequisition"]),
+                                IsHandover = reader["isHandover"] != DBNull.Value && Convert.ToBoolean(reader["isHandover"]),
+                                Is_Active = reader["is_active"] != DBNull.Value && Convert.ToBoolean(reader["is_active"]),
+                                Created_On = reader["created_on"] != DBNull.Value ? Convert.ToDateTime(reader["created_on"]) : DateTime.MinValue,
+                                Updated_On = reader["updated_on"] != DBNull.Value ? Convert.ToDateTime(reader["updated_on"]) : DateTime.MinValue
                             };
+
                         }
                     }
                 }
@@ -169,8 +172,8 @@ namespace UrestComplaintWebApi.Controllers
                     {
                         string mainInsertQuery = @"
                             INSERT INTO app.ItemSpecifications 
-                            (item_name, gender, quantity, propertyId, isRequisition, isHandover, is_active, created_on, updated_on)
-                            VALUES (@item_name, @gender, @quantity, @propertyId, @isRequisition, @isHandover, 1, GETDATE(), GETDATE());
+                            (item_id,item_name, gender, quantity, propertyId, isRequisition, isHandover, is_active, created_on, updated_on)
+                            VALUES (@item_id,@item_name, @gender, @quantity, @propertyId, @isRequisition, @isHandover, 1, GETDATE(), GETDATE());
                             SELECT SCOPE_IDENTITY();";
 
                         string detailInsertQuery = @"
@@ -185,6 +188,7 @@ namespace UrestComplaintWebApi.Controllers
                             int newId;
                             using (var cmd = new SqlCommand(mainInsertQuery, conn, transaction))
                             {
+                                cmd.Parameters.AddWithValue("@item_id", model.ItemId);
                                 cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@quantity", model.Quantity);
@@ -240,7 +244,8 @@ namespace UrestComplaintWebApi.Controllers
                     {
                         string updateMain = @"
                             UPDATE app.ItemSpecifications
-                            SET item_name = @item_name,
+                            SET item_id= @item_id,
+                                item_name = @item_name,
                                 gender = @gender,
                                 quantity = @quantity,
                                 propertyId = @propertyId,
@@ -253,6 +258,7 @@ namespace UrestComplaintWebApi.Controllers
                         using (var cmd = new SqlCommand(updateMain, conn, transaction))
                         {
                             cmd.Parameters.AddWithValue("@id", id);
+                            cmd.Parameters.AddWithValue("@item_id", model.ItemId);
                             cmd.Parameters.AddWithValue("@item_name", model.Item_Name ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@gender", model.Gender ?? (object)DBNull.Value);
                             cmd.Parameters.AddWithValue("@quantity", model.Quantity);
