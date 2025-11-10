@@ -7,7 +7,7 @@ namespace UrestComplaintWebApi.Models
 {
     public class TicketIntimationRequest
     {
-      
+
         public string PropertyId { get; set; }
         public string SupervisorId { get; set; }
         public string TicketId { get; set; }
@@ -60,5 +60,9 @@ namespace UrestComplaintWebApi.Models
         public string MobileNumber { get; set; }
     }
 
-
+    public class UserComplaint
+    {
+        public string MobileNumber { get; set; }
+        public string ComplaintId { get; set; }
+    }
 }

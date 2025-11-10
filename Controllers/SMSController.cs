@@ -28,7 +28,8 @@ namespace UrestComplaintWebApi.Controllers
                 { "VISITOR_NOTIFICATION_SMS_LINK", ("VISMGT", "201983") },
                 { "GAURD_VISITOR_REJECTION", ("VISMGT", "201984") },
                 { "GAURD_VISITOR_APPROVAL", ("VISMGT", "201985") },
-                { "COMPLAINT_NOTIFICATION_FM", ("URSTCP", "201986") }
+                { "COMPLAINT_NOTIFICATION_FM", ("URSTCP", "201986") },
+                {"USERCOMPLAINT",("URSTCP", "202301") }
             };
 
         // ✅ Ticket Intimation Notification
@@ -56,6 +57,29 @@ namespace UrestComplaintWebApi.Controllers
                 }
 
                 return Ok("✅ Ticket intimation sent successfully.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error: {ex.Message}");
+                return InternalServerError(ex);
+            }
+        }
+
+        [HttpPost]
+        [Route("UserTicketIntimation")]
+        public async Task<IHttpActionResult> UserTicketIntimation([FromBody] UserComplaint request)
+        {
+            try
+            {
+                var template = SmsTemplates["USERCOMPLAINT"];
+                string smsVariables = request.ComplaintId;
+              
+                    bool sent = await integrations.SendDLTSMSAsync(request.MobileNumber, template.templateId, template.senderId, smsVariables);
+                    if (!sent)
+                        return InternalServerError(new Exception($"Failed to send SMS to {request.MobileNumber}."));
+                
+
+                return Ok("✅ User Ticket intimation sent successfully.");
             }
             catch (Exception ex)
             {
