@@ -82,8 +82,8 @@ namespace UrestComplaintWebApi.Controllers
                 await conn.OpenAsync();
 
                 var query = @"INSERT INTO App.AttendanceSummary
-                      (EmpID, EmployeeName, WorkingDays, LeaveDays, WeekDaysOff, PropertyID, is_active, CreatedOn, monthyear)
-                      VALUES (@EmpID, @EmployeeName, @WorkingDays, @LeaveDays, @WeekDaysOff, @PropertyID, 1, GETDATE(), @monthyear);";
+                      (EmpID, EmployeeName, WorkingDays, LeaveDays, WeekDaysOff, PropertyID, is_active, CreatedOn, monthyear,OTDays, OTHours)
+                      VALUES (@EmpID, @EmployeeName, @WorkingDays, @LeaveDays, @WeekDaysOff, @PropertyID, 1, GETDATE(), @monthyear, @OTDays, @OTHours);";
 
                 using (var cmd = new SqlCommand(query, conn))
                 {
@@ -94,6 +94,8 @@ namespace UrestComplaintWebApi.Controllers
                     cmd.Parameters.AddWithValue("@WeekDaysOff", (object)model.WeekDaysOff ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@PropertyID", (object)model.PropertyID ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@monthyear", (object)model.monthyear ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@OTDays", (object)model.OtDays ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@OTHours", (object)model.OtHours ?? DBNull.Value);
 
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -123,7 +125,9 @@ namespace UrestComplaintWebApi.Controllers
             UPDATE App.AttendanceSummary
             SET WorkingDays = @WorkingDays,
                 LeaveDays = @LeaveDays,
-                WeekDaysOff = @WeekDaysOff
+                WeekDaysOff = @WeekDaysOff,
+OTDays = @OTDays,
+                OTHours = @OTHours
             WHERE EmpID = @EmpID 
               AND monthyear = @monthyear
               AND is_active = 1;
@@ -136,7 +140,8 @@ namespace UrestComplaintWebApi.Controllers
                     cmd.Parameters.AddWithValue("@WorkingDays", (object)model.WorkingDays ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@LeaveDays", (object)model.LeaveDays ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@WeekDaysOff", (object)model.WeekDaysOff ?? DBNull.Value);
-
+                    cmd.Parameters.AddWithValue("@OTDays", (object)model.OtDays ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@OTHours", (object)model.OtHours ?? DBNull.Value);
                     int rows = await cmd.ExecuteNonQueryAsync();
 
                     if (rows == 0)
@@ -224,7 +229,9 @@ namespace UrestComplaintWebApi.Controllers
                 PropertyID = reader["PropertyID"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["PropertyID"]),
                 CreatedOn = reader["CreatedOn"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["CreatedOn"]),
                 IsActive = reader["is_active"] == DBNull.Value ? false : Convert.ToBoolean(reader["is_active"]),
-                monthyear = reader["monthyear"] == DBNull.Value ? null : reader["monthyear"].ToString()
+                monthyear = reader["monthyear"] == DBNull.Value ? null : reader["monthyear"].ToString(),
+                OtDays = reader["OTDays"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["OTDays"]),
+                OtHours = reader["OTHours"] == DBNull.Value ? (decimal?)null : Convert.ToDecimal(reader["OTHours"])
             };
         }
     }

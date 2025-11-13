@@ -13,5 +13,7 @@ namespace UrestComplaintWebApi.Models
         public DateTime? CreatedOn { get; set; }
         public bool IsActive { get; set; }
         public string monthyear { get; set; }
+        public int? OtDays { get; set; }
+        public decimal? OtHours { get; set; }
     }
 }
